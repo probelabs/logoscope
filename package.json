@@ -1,0 +1,11 @@
+{
+  "name": "@probelabs/logoscope-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Deployment scripts for Logoscope static site and Cloudflare Worker router.",
+  "scripts": {
+    "deploy:site": "cd site && npx wrangler pages deploy . --project-name=logoscope-site --commit-dirty=true",
+    "deploy:worker": "npx wrangler deploy"
+  }
+}
+

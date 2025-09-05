@@ -1,0 +1,38 @@
+{
+  "name": "@logoscope/cli",
+  "version": "0.1.0",
+  "description": "Node.js wrapper for the Logoscope log analysis CLI",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "logoscope": "bin/logoscope"
+  },
+  "files": [
+    "src/**/*",
+    "bin/logoscope",
+    "bin/.gitkeep",
+    "scripts/postinstall.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "logoscope",
+    "logs",
+    "ai",
+    "drain",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.8.3",
+    "fs-extra": "^11.1.1",
+    "tar": "^6.2.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
+

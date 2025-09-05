@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "big-brain": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@probelabs/big-brain@latest",
+        "--chatgpt"
+      ],
+      "env": {}
+    }
+  }
+}

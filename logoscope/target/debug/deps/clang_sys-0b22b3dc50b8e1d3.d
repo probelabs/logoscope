@@ -1,0 +1,14 @@
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/clang_sys-0b22b3dc50b8e1d3.d: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/macros.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/common.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/dynamic.rs
+
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/libclang_sys-0b22b3dc50b8e1d3.rlib: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/macros.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/common.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/dynamic.rs
+
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/libclang_sys-0b22b3dc50b8e1d3.rmeta: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/macros.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/common.rs /Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/dynamic.rs
+
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs:
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/macros.rs:
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/common.rs:
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out/dynamic.rs:
+
+# env-dep:OUT_DIR=/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/build/clang-sys-09c327989401b499/out

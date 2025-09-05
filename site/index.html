@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Logoscope — Distill logs into structured intelligence</title>
+    <meta name="description" content="Logoscope compresses millions of log lines into kilobytes of structured, AI-ready intelligence with pattern extraction, temporal analysis, and queryable summaries." />
+
+    <!-- Display + text + mono fonts (polished, readable, variable opsz on headings) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+    <style>
+      :root {
+        /* Color system: calm dark with electric accents */
+        --bg: #0c0d10;
+        --surface: #121319;
+        --elev: #171924;
+        --text: #e9ecf1;
+        --muted: #b5bdc9;
+        --dim: #8e96a3;
+        --line: #242838;
+        --accent: #7cf5c6; /* mint */
+        --accent-2: #8aa5ff; /* periwinkle */
+        --warn: #ffcc66;
+
+        /* Fluid type scale */
+        --step--2: clamp(0.78rem, 0.73rem + 0.2vw, 0.84rem);
+        --step--1: clamp(0.92rem, 0.87rem + 0.3vw, 1.00rem);
+        --step-0: clamp(1.00rem, 0.95rem + 0.4vw, 1.12rem);
+        --step-1: clamp(1.25rem, 1.10rem + 0.8vw, 1.60rem);
+        --step-2: clamp(1.60rem, 1.35rem + 1.6vw, 2.40rem);
+        --step-3: clamp(2.10rem, 1.70rem + 2.5vw, 3.40rem);
+        --step-4: clamp(2.80rem, 2.20rem + 3.8vw, 4.80rem);
+
+        --radius: 14px;
+        --radius-sm: 8px;
+        --shadow-soft: 0 10px 30px rgba(0,0,0,0.35);
+        --shadow-hard: 0 12px 40px rgba(0,0,0,0.55);
+
+        --maxw: 72rem;
+        --measure: 65ch;
+        --grid-gap: clamp(1rem, 1vw, 1.6rem);
+        --pad: clamp(1rem, 2vw, 2rem);
+
+        /* Entropy lab dynamics */
+        --entropy: 62;   /* 0 structure → 100 chaos (js-updated) */
+        --blur: 0rem;    /* js-updated visual fuzz */
+        --trk: 0em;      /* js-updated tracking */
+        --opsz: 36;      /* js-updated optical size for Fraunces */
+      }
+
+      /* Global typography */
+      html { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 600px at 10% -10%, #141622 20%, transparent 60%),
+                    radial-gradient(900px 600px at 120% 10%, #11131a 10%, transparent 60%),
+                    var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        font-size: var(--step-0);
+        line-height: 1.55;
+        letter-spacing: 0.01em;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        font-optical-sizing: auto;
+      }
+      h1, h2, h3 {
+        font-family: "Fraunces", ui-serif, Georgia, Cambria, Times, serif;
+        font-weight: 700;
+        line-height: 1.07;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+        margin: 0 0 0.6em 0;
+      }
+      h1 { font-size: var(--step-4); }
+      h2 { font-size: var(--step-2); }
+      h3 { font-size: var(--step-1); }
+      p { max-width: var(--measure); color: var(--muted); }
+      strong { color: var(--text); font-weight: 600; }
+      small { color: var(--dim); font-size: var(--step--1); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; text-underline-offset: 3px; }
+      ::selection { background: color-mix(in oklab, var(--accent) 25%, transparent); color: var(--text); }
+      :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; border-radius: 6px; }
+
+      /* Layout */
+      .wrap { max-width: var(--maxw); margin: 0 auto; padding: calc(var(--pad) * 1.25) var(--pad); }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+      .brand { display: inline-flex; align-items: center; gap: 0.8rem; text-decoration: none; }
+      .brand h1 { font-size: clamp(1.4rem, 1.2rem + 1vw, 2rem); margin: 0; }
+      .pill { display:inline-flex; align-items:center; gap:.5rem; padding:.45rem .7rem; border-radius:999px; background: linear-gradient(180deg, #161925, #10121a); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 20px rgba(0,0,0,0.35); border:1px solid var(--line); color: var(--muted); font-size: var(--step--2); }
+      .pill .dot { width: 8px; height: 8px; border-radius: 999px; background: radial-gradient(circle at 30% 30%, #b8ffe5, var(--accent)); }
+
+      /* Stage (Entropy → Structure Lab) */
+      .stage { position: relative; /* no fixed height: let insights define it */ overflow: clip; background:
+        radial-gradient(1400px 700px at -10% -10%, rgba(124,245,198,0.06), transparent 50%),
+        radial-gradient(1200px 600px at 110% -20%, rgba(138,165,255,0.08), transparent 55%),
+        var(--bg);
+      }
+      #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; pointer-events: none; }
+      .stream { position: fixed; inset: 0; width: 100%; height: 100%; padding: clamp(8px,1.2vw,14px); box-sizing: border-box; pointer-events: none; white-space: pre; overflow: hidden; opacity: var(--stream-alpha, .22); color: #d7f1ff; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: clamp(10px, 1.2vw, 13px); line-height: 1.35; text-shadow: 0 1px 0 rgba(0,0,0,0.6); will-change: filter, opacity; transition: filter 160ms ease, opacity 240ms ease; z-index: 0; }
+      .stage-overlay { position: relative; z-index: 1; height: auto; display: grid; grid-auto-rows: min-content; }
+      .stage-top { display: grid; grid-template-columns: 1fr; align-content: center; padding: clamp(1rem, 4vw, 3rem); gap: clamp(1rem,2vw,2rem); }
+      @media (min-width: 680px) {
+        .stage-top { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); align-items: start; }
+        .stage-left { grid-column: 1; }
+        .stage-insights { grid-column: 2; }
+      }
+      .stage-left { display: grid; gap: 1.25rem; align-content: start; }
+      .brandline { display:flex; align-items:center; gap:.8rem; color: var(--dim); }
+      .brandmark { font-family: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-weight: 700; letter-spacing: -0.01em; }
+      .brandmark.big { font-size: clamp(1.8rem, 2vw + 1.6rem, 2.8rem); letter-spacing: -0.01em; }
+
+      .titleblock { max-width: min(88rem, 92vw); }
+      .xdisplay { font-family: "Fraunces", ui-serif, Georgia, Cambria, Times, serif; font-weight: 700; font-size: clamp(2.6rem, 5vw + 1rem, 7rem); line-height: .96; letter-spacing: var(--trk); filter: blur(var(--blur)); margin: .2em 0 .2em; font-variation-settings: "opsz" var(--opsz); }
+      .xdisplay + .lede {
+        font-size: clamp(1.22rem, 1.2vw + 1.02rem, 1.75rem);
+        max-width: 64ch;
+        color: color-mix(in oklab, var(--text) 80%, var(--muted));
+        line-height: 1.68;
+        text-wrap: pretty;
+        letter-spacing: 0.004em;
+      }
+
+      .stage-bottom { display:flex; justify-content: space-between; align-items: end; gap: 1rem; padding: clamp(1rem, 4vw, 3rem); }
+      .readout { display:flex; gap: .6rem; flex-wrap:wrap; }
+      .readout .stat { padding:.6rem .8rem; border:1px solid var(--line); border-radius: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005)); font-variant-numeric: tabular-nums lining-nums; }
+
+      .entropy-control { display:grid; gap:.5rem; align-items:center; width: min(520px, 46vw); }
+      .entropy-control label { color: var(--dim); font-size: var(--step--1); }
+      .entropy-control input[type="range"] { appearance:none; width:100%; height: 20px; background: transparent; }
+      .entropy-control input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background:
+        linear-gradient(90deg, color-mix(in oklab, #ff9090 70%, #000 0%) 0%, color-mix(in oklab, #8aa5ff 70%, #000 0%) 50%, color-mix(in oklab, #7cf5c6 80%, #000 0%) 100%);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 8px 24px rgba(0,0,0,0.35);
+      }
+      .entropy-control input[type="range"]::-webkit-slider-thumb { appearance:none; margin-top: -8px; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #eafff6, var(--accent)); border: 1px solid color-mix(in oklab, var(--accent) 25%, var(--line)); box-shadow: 0 8px 24px rgba(124,245,198,0.25), inset 0 1px 0 rgba(255,255,255,0.4); }
+      .entropy-control input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background:
+        linear-gradient(90deg, color-mix(in oklab, #ff9090 70%, #000 0%) 0%, color-mix(in oklab, #8aa5ff 70%, #000 0%) 50%, color-mix(in oklab, #7cf5c6 80%, #000 0%) 100%);
+      }
+      .entropy-control input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border: none; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #eafff6, var(--accent)); box-shadow: 0 8px 24px rgba(124,245,198,0.25), inset 0 1px 0 rgba(255,255,255,0.4); }
+      .entropy-control .ticks { display:flex; justify-content: space-between; color: var(--dim); font-size: var(--step--2); }
+
+      /* Global blur linkage: chaos blurs hero + stage content (not the dial) */
+      .stage-top .brandline,
+      .stage-top .titleblock,
+      .stage-top .story,
+      .stage-top .cli-quickstart,
+      .stage-insights,
+      .stage-bottom .readout,
+      .hero { filter: blur(var(--blur)); transition: filter 160ms ease; }
+      .stream { filter: blur(var(--rev-blur)); transition: filter 160ms ease; }
+
+      .hero-right { display: grid; grid-auto-rows: min-content; gap: .8rem; }
+      .hero-right .hero-demo { opacity: var(--demo-alpha, 1); transition: opacity 200ms ease, filter 160ms ease; }
+
+      .stage-insights, .hero-insights { display: grid; grid-template-rows: auto 1fr; gap: .8rem; padding: clamp(0.6rem, 1.4vw, 1.2rem); border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)), radial-gradient(130% 100% at 0% -10%, rgba(124,245,198,0.10), transparent 55%), var(--elev); box-shadow: var(--shadow-hard); min-height: 220px; }
+      .stage-insights .logbox { font-size: 11.5px; line-height: 1.4; padding: 0.7rem 0.8rem; }
+      @media (min-width: 1320px) { .stage-insights .logbox { font-size: 12px; } }
+      .stage-insights { opacity: var(--insight-alpha, 0); transition: opacity 240ms ease; }
+
+      /* Hero split */
+      .hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--grid-gap); align-items: stretch; margin-top: 1.2rem; }
+      @media (max-width: 980px) { .hero { grid-template-columns: 1fr; } }
+
+      .hero-copy { padding: clamp(1rem, 2vw, 2rem); border: 1px solid var(--line); border-radius: var(--radius); background:
+        linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)),
+        radial-gradient(200% 100% at -10% 0%, rgba(124,245,198,0.04), transparent 38%),
+        var(--surface);
+        box-shadow: var(--shadow-soft);
+        position: relative;
+        overflow: clip;
+      }
+
+      .lens-scan { position: absolute; inset: -40%; background:
+        radial-gradient(200px 200px at var(--x, 20%) var(--y, 20%), color-mix(in oklab, var(--accent) 30%, transparent), transparent 70%),
+        radial-gradient(350px 250px at calc(var(--x, 20%) + 10%) calc(var(--y, 20%) - 10%), color-mix(in oklab, var(--accent-2) 16%, transparent), transparent 70%);
+        filter: blur(30px) saturate(115%);
+        opacity: 0.25;
+        pointer-events: none;
+        mix-blend-mode: screen;
+        animation: float 16s ease-in-out infinite alternate;
+      }
+      @keyframes float { from { transform: translate3d(-3%,2%,0); } to { transform: translate3d(3%,-4%,0); } }
+
+      .brandmark { font-weight: 700; letter-spacing: -0.02em; display:inline-block; }
+      .brandmark .o { position: relative; display:inline-block; padding: 0 .05em; }
+      .brandmark .o::after {
+        content: ""; position: absolute; inset: 18% 10% 18% 10%; border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, #eafff6 0%, var(--accent) 25%, transparent 55%);
+        filter: blur(4px) saturate(130%);
+        mix-blend-mode: screen; opacity: .7;
+      }
+
+      .hero-copy h1 { margin-top: .25rem; }
+      .lede { font-size: var(--step-1); color: var(--muted); margin-top: .8rem; }
+
+      .hero-stats { display:flex; flex-wrap:wrap; gap: .6rem; margin-top: 1.1rem; }
+      .stat {
+        padding: .6rem .75rem; border-radius: var(--radius-sm);
+        background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+        border: 1px solid var(--line);
+        font-variant-numeric: tabular-nums lining-nums;
+      }
+
+      .cta { display:flex; align-items:center; gap:.7rem; margin-top: 1.2rem; }
+      .feat-chips { display:flex; flex-wrap: wrap; gap: .5rem; margin-top: .9rem; }
+      .feat-chips .chip { padding: .4rem .6rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: var(--step--2); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)); }
+      .eyebrow {
+        font-family: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        font-size: clamp(1.2rem, 0.9vw + 1rem, 1.9rem);
+        text-transform: uppercase;
+        letter-spacing: .10em;
+        color: color-mix(in oklab, var(--accent-2) 52%, var(--dim));
+        margin: 1.6rem 0 .6rem;
+        font-weight: 500; /* lighter look */
+        line-height: 1.15;
+        font-variant-caps: all-small-caps;
+      }
+      .story { display: grid; gap: 1rem; margin-top: .8rem; max-width: 64ch; }
+      .story p {
+        margin: 0;
+        color: color-mix(in oklab, var(--text) 78%, var(--muted));
+        line-height: 1.74;
+        letter-spacing: 0.0025em;
+        hyphens: auto;
+        overflow-wrap: anywhere;
+        font-size: clamp(1.02rem, 0.35vw + 0.98rem, 1.14rem);
+      }
+      .story p + p { margin-top: .55rem; }
+      .story p + .eyebrow { margin-top: 2rem; }
+      .story strong { color: var(--text); font-weight: 600; }
+
+      /* CLI quick start */
+      .cli-quickstart { margin-top: 4rem; margin-bottom: 4rem; }
+      .cli-card { margin-top: 1.6rem; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: .9rem 1rem; background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); max-width: 64ch; }
+      .cli-card .cli-title { font-size: var(--step--1); color: var(--dim); text-transform: uppercase; letter-spacing: .14em; margin-bottom: .45rem; font-family: "Space Grotesk", Inter, ui-sans-serif, system-ui; }
+      .cli { margin: 0; padding: .65rem .75rem; background: #0f1117; border: 1px solid #1a2234; border-radius: 10px; color: #d6efff; white-space: pre; overflow: auto; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; line-height: 1.55; }
+      .cli-quickstart .cli { font-size: 14px; }
+      .cli + .cli { margin-top: .55rem; }
+      .cli .prompt { color: #7cf5c6; }
+      .cli-note { display:block; margin-top: .5rem; color: var(--dim); font-size: var(--step--2); }
+      .github-btn { margin-top: .8rem; }
+
+      /* Probe Ecosystem section (adapted from cc-remote) */
+      .probe-section { padding: clamp(3rem, 8vw, 8rem) 0; text-align: center; }
+      .probe-content { max-width: 68rem; margin: 0 auto; padding: 0 var(--pad); }
+      .probe-header { font-size: clamp(2rem, 3.6vw, 2.8rem); font-weight: 700; margin-bottom: clamp(2rem, 5vw, 4rem); letter-spacing: -0.02em; color: var(--text); }
+      .probe-gradient { background: linear-gradient(135deg, #8aa5ff 0%, #7cf5c6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+      .probe-card { display:flex; align-items:center; gap: clamp(1.5rem, 4vw, 4rem); text-align:left; padding: 0; justify-content: center; }
+      .probe-logo-wrapper { flex-shrink:0; }
+      .probe-logo { width: 100px; height: auto; opacity: 0.9; object-fit: contain; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.25)); }
+      .probe-info { flex: 1; max-width: 46rem; }
+      .probe-info h3 { font-size: clamp(1.4rem, 1.2vw + 1rem, 1.8rem); margin-bottom: 1rem; letter-spacing: -0.02em; font-weight: 600; color: var(--text); }
+      .probe-info-row { display:block; }
+      .probe-info p { color: var(--muted); line-height: 1.7; margin: 0 0 .6rem 0; font-size: clamp(0.98rem, 0.3vw + 0.94rem, 1.08rem); }
+      .probe-contact { color: var(--dim); font-size: clamp(0.92rem, 0.25vw + 0.9rem, 1rem); text-align: left; margin-top: .6rem; }
+      .probe-contact a { color: var(--accent); text-decoration: none; }
+      .probe-contact a:hover { text-decoration: underline; text-underline-offset: 3px; }
+      .probe-link { color: var(--accent); text-decoration: none; font-weight: 600; display:inline-flex; align-items:center; gap:.5rem; }
+      .probe-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+      .btn { display:inline-flex; align-items:center; gap:.6rem; padding:.7rem 1rem; border-radius: 12px; border:1px solid color-mix(in oklab, var(--accent) 25%, var(--line)); color:#04150f; font-weight:600; background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 95%, #fff 0%), color-mix(in oklab, var(--accent) 86%, #000 0%)); box-shadow: 0 10px 25px rgba(124,245,198,0.18), inset 0 1px 0 rgba(255,255,255,0.3); }
+      .btn:hover { transform: translateY(-1px); }
+      .btn-outline { background: transparent; color: var(--text); border-color: var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+      .btn-outline:hover { border-color: color-mix(in oklab, var(--accent-2) 35%, var(--line)); color: var(--accent-2); }
+
+      /* Log transformer panel */
+      .hero-demo {
+        display: grid; grid-template-rows: auto 1fr; gap: .8rem;
+        padding: clamp(0.6rem, 1.4vw, 1.2rem);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)),
+                    radial-gradient(130% 100% at 120% -10%, rgba(138,165,255,0.10), transparent 55%),
+                    var(--elev);
+        box-shadow: var(--shadow-hard);
+        min-height: 420px;
+      }
+      .demo-tabs { display:flex; gap:.4rem; align-items:center; flex-wrap: wrap; }
+      .tab { padding:.45rem .75rem; border-radius: 10px; border:1px solid var(--line); color: var(--muted); background: linear-gradient(180deg, #161925, #12131a); cursor: pointer; user-select: none; }
+      .tab[aria-selected="true"] { color: var(--text); border-color: color-mix(in oklab, var(--accent-2) 28%, var(--line)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-2) 18%, transparent); }
+      .demo-tabs .tab { pointer-events: none; opacity: .9; }
+      .ratio { margin-left:auto; font-variant-numeric: tabular-nums; color: var(--dim); }
+
+      .logbox {
+        font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: clamp(12.5px, 11px + 0.3vw, 14px);
+        line-height: 1.55;
+        color: #e6f4ff;
+        background: linear-gradient(180deg, rgba(12, 19, 24, 0.85), rgba(9, 12, 15, 0.9));
+        border: 1px solid #0e2530;
+        border-radius: 12px;
+        padding: 0.9rem 1rem;
+        overflow: auto;
+        min-height: 0;
+        box-shadow: inset 0 12px 40px rgba(0,0,0,0.35);
+        text-shadow: 0 1px 0 rgba(0,0,0,0.4);
+      }
+      .logbox .code { white-space: pre; margin: .25rem 0; padding: 0; background: transparent; border: 0; color: inherit; line-height: 1.5; font-size: 12px; }
+      .anno { margin: .55rem 0 .7rem; padding: .55rem .7rem; border-left: 3px solid var(--accent-2); border-radius: 8px; background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)); color: var(--muted); }
+      .anno h4 { margin: 0 0 .25rem 0; font-size: var(--step--1); color: var(--text); font-weight: 600; }
+      .anno p { margin: 0; font-size: var(--step--1); }
+      .logbox .muted { color: #86a4b2; }
+      .logbox .mask  { color: #99f3c8; }
+      .logbox .key   { color: #8aa5ff; }
+      .logbox .val   { color: #ffeaa2; }
+      .logbox .err   { color: #ff9090; }
+
+      /* Content sections */
+      .section { margin-top: clamp(2rem, 6vw, 6rem); }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1rem, 2.6vw, 2.6rem); align-items: start; }
+      @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+      .card { border:1px solid var(--line); border-radius: var(--radius); padding: clamp(1rem, 2vw, 1.6rem); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)); box-shadow: var(--shadow-soft); }
+      .list { margin: 0; padding-left: 1.1em; }
+      .list li { margin: .4rem 0; color: var(--muted); }
+
+      footer { margin-top: clamp(3rem, 8vw, 8rem); padding: var(--pad) 0; color: var(--dim); font-size: var(--step--1); }
+    </style>
+  </head>
+  <body>
+    <!-- Experimental: Entropy → Structure Lab (full-bleed) -->
+    <section class="stage" id="lab" aria-label="Entropy to Structure">
+      <canvas id="world" aria-hidden="true"></canvas>
+      <pre id="stream" class="stream" aria-hidden="true"></pre>
+      <div class="stage-overlay">
+        <div class="stage-top">
+          <div class="stage-left">
+            <div class="brandline">
+              <span class="brandmark big">Logoscope</span>
+            </div>
+            <div class="titleblock">
+              <h1 class="xdisplay" id="labTitle">Noise → Narrative</h1>
+              <p class="lede">Logs are how systems talk, but at scale they drown signal in repetition. We turn that noise into a language both humans and AI can reason about.</p>
+              <div class="cli-quickstart">
+              <div class="cli-card">
+                <div class="cli-title">CLI quick start</div>
+<pre class="cli"><span class="prompt">$</span> npm i @probelabs/logoscope
+<span class="prompt">$</span> logoscope logs/app-*.log logs/auth-*.log</pre>
+<pre class="cli"><span class="prompt">$</span> kubectl logs -n prod deploy/web -f --since=30m | logoscope --out insights.json
+<span class="prompt">$</span> journalctl -u api -o json | logoscope --out insights.json</pre>
+                <small class="cli-note">Accepts multiple files and globs, or reads from standard input (auto‑detected). Outputs to stdout by default; use <code>--out file.json</code> to save.</small>
+              </div>
+              <a class="btn btn-outline github-btn" href="https://github.com/probelabs/logoscope" target="_blank" rel="noopener" aria-label="View on GitHub">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.38 0 12c0 5.3 3.44 9.79 8.2 11.39.6.1.8-.26.8-.58v-2.24c-3.34.73-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.72.08-.72 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.1-.77.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.53-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.65 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.19.7.8.58C20.56 21.8 24 17.3 24 12 24 5.38 18.63 0 12 0z"/></svg>
+                View on GitHub
+              </a>
+              </div>
+              </div>
+              <div class="story">
+                <p class="eyebrow">For Support & On‑Call</p>
+                <p>You open a ticket: payments failing, dashboards flashing red. The log dump is <strong>hundreds of megabytes</strong>. Search helps a little, but bursts hide in the scroll; schema shifts slip by; copying chunks into AI is a dead end.</p>
+
+                <p class="eyebrow">The Constraint</p>
+                <p>Large logs exceed <strong>AI context windows</strong>; repetition wastes tokens; time‑based anomalies don’t survive copy‑paste. You need structure, not more lines.</p>
+
+                <p class="eyebrow">What Logoscope Does</p>
+                <p>We compress logs into a <strong>pattern language</strong>: flatten JSON, mask ids, cluster recurring shapes, and track time as a rhythm of <strong>bursts and gaps</strong>. We surface <strong>new/rare patterns</strong> and <strong>frequency spikes</strong>, and keep a reversible trail back to raw lines.</p>
+
+                <p class="eyebrow">Why It Matters</p>
+                <p>The result is <strong>AI‑ready JSON</strong> that actually fits into context windows — summaries, top templates, and anomalies — so agents can answer real questions and you can jump to evidence fast.</p>
+
+                <p class="eyebrow">Ask It</p>
+                <p>“Which errors spiked between 14:20–14:25?” • “Did a field appear before failures?” • “Show examples with 3 lines of context.”</p>
+              </div>
+            </div>
+          </div>
+          <div class="stage-insights" id="insights">
+            <div class="logbox" id="insightsBox" style="min-height: 220px;" role="region" aria-label="Insights output"></div>
+          </div>
+        </div>
+        
+      </div>
+  </section>
+
+    <!-- Probe Ecosystem Section (adapted) -->
+    <section class="probe-section">
+      <div class="probe-content">
+        <h2 class="probe-header">Part of the Probe Ecosystem</h2>
+        <div class="probe-card">
+          <div class="probe-logo-wrapper">
+            <img src="https://probelabs.com/logo.png" alt="Probelabs" class="probe-logo" />
+          </div>
+          <div class="probe-info">
+            <div class="probe-info-row">
+            <p>
+              Logoscope is part of Probe’s vision: tools that help humans and AI work together on real‑world systems.
+              Where Probe gives AI the right context, Logoscope distills massive logs into compact, queryable insight—
+              patterns, bursts, and anomalies that actually fit into AI context windows while preserving a link back to raw evidence.
+            </p>
+            <div class="probe-contact">Questions or feedback? Reach out at <a href="mailto:hello@probelabs.com">hello@probelabs.com</a></div>
+            </div>
+            <a class="probe-link" href="https://probelabs.com" target="_blank" rel="noopener">Explore Probe Ecosystem →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site-footer">
+      <div class="wrap" style="padding-top: var(--pad); padding-bottom: var(--pad);">
+        <div style="display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; justify-content: space-between; padding-top: 1rem;">
+          <div style="color: var(--dim); font-size: var(--step--1);">© 2025 Logoscope by Probelabs — Built for debugging at scale.</div>
+          <div style="display:flex; gap:.8rem;">
+            <a href="https://github.com/probelabs/logoscope" target="_blank" rel="noopener" class="pill">GitHub</a>
+            <a href="#" class="pill">Docs</a>
+            <a href="#" class="pill">Privacy</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+
+    <script>
+      // Entropy Lab: one dial controls both visuals and typography
+      const root = document.documentElement;
+      const entropyInput = document.getElementById('entropy');
+      const patternsEl = document.getElementById('patterns');
+      const ratioLiveEl = document.getElementById('ratioLive');
+      const titleEl = document.getElementById('labTitle');
+      const streamEl = document.getElementById('stream');
+
+      function setEntropy(v) {
+        // v: 0 (structured) → 100 (chaos)
+        const e = Math.max(0, Math.min(100, Number(v)));
+        const t = (100 - e) / 100; // structure factor 0..1
+        root.style.setProperty('--entropy', e);
+        // Typography morph
+        const blur = (e * 0.08).toFixed(2) + 'rem';
+        // Background logs: slower, low max blur in px (read lines, not words)
+        const revBlur = (Math.pow((100 - e)/100, 0.55) * 2.2).toFixed(2) + 'px';
+        const track = (e * 0.004 - 0.02).toFixed(3) + 'em'; // negative at structure
+        const opsz = (9 + (144 - 9) * (t*t)).toFixed(2); // finer detail as structure ↑
+        root.style.setProperty('--blur', blur);
+        root.style.setProperty('--rev-blur', revBlur);
+        // Background stream opacity: fade slightly as blur increases
+        const streamAlpha = (0.22 - 0.10 * t).toFixed(2); // 0.22 → ~0.12
+        root.style.setProperty('--stream-alpha', streamAlpha);
+        root.style.setProperty('--trk', track);
+        root.style.setProperty('--opsz', opsz);
+        // Title dramatization
+        titleEl.textContent = t > 0.66 ? 'Signal > Noise' : (t > 0.33 ? 'Noise → Narrative' : 'Raw → Pattern');
+        // Crossfade demo → insights
+        const ins = Math.min(1, Math.max(0, Math.pow(t, 1.2)));
+        const dem = Math.min(1, Math.max(0, 1 - Math.pow(t, 1.0) * 0.4));
+        root.style.setProperty('--insight-alpha', ins.toFixed(3));
+        root.style.setProperty('--demo-alpha', dem.toFixed(3));
+        updateViewForEntropy();
+      }
+      if (entropyInput) {
+        entropyInput.addEventListener('input', e => setEntropy(e.target.value));
+        setEntropy(entropyInput.value);
+      } else {
+        setEntropy(100);
+      }
+
+      // Generative particles: drift at high entropy, cluster at low entropy
+      const canvas = document.getElementById('world');
+      const ctx = canvas.getContext('2d');
+      let W = 0, H = 0, DPR = Math.min(2, window.devicePixelRatio || 1);
+      const particles = []; const N = 380;
+      const clusterCols = 4; const clusterRows = 3;
+      const clusters = [];
+
+      function resize() {
+        W = canvas.clientWidth = canvas.parentElement.clientWidth;
+        H = canvas.clientHeight = canvas.parentElement.clientHeight;
+        canvas.width = Math.round(W * DPR);
+        canvas.height = Math.round(H * DPR);
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      function initClusters() {
+        clusters.length = 0;
+        for (let y=0; y<clusterRows; y++) {
+          for (let x=0; x<clusterCols; x++) {
+            clusters.push({ x: (x + 0.5) / clusterCols, y: (y + 0.5) / clusterRows });
+          }
+        }
+      }
+      initClusters();
+
+      function rand(a,b){ return a + Math.random()*(b-a); }
+      function choice(arr){ return arr[(arr.length*Math.random())|0]; }
+
+      // Seed particles with random headings
+      for (let i=0;i<N;i++) {
+        particles.push({
+          x: Math.random(),
+          y: Math.random(),
+          vx: rand(-0.002, 0.002),
+          vy: rand(-0.002, 0.002),
+          tone: Math.random() < 0.15 ? 'err' : (Math.random()<0.5?'key':'mask'),
+          cluster: choice(clusters),
+        });
+      }
+
+      function draw(){
+        const e = Number(getComputedStyle(root).getPropertyValue('--entropy')) || 0;
+        const t = (100 - e) / 100; // structure
+        const pull = 0.006 + t * 0.06; // cluster pull strength
+        const jitter = (0.003 * (1 - t));
+        const gridSnap = t * 0.6; // snap to tidy grid at high structure
+
+        ctx.setTransform(DPR,0,0,DPR,0,0);
+        // background
+        ctx.globalCompositeOperation = 'source-over';
+        const grad = ctx.createLinearGradient(0,0,0,H);
+        grad.addColorStop(0,'#0c0d10');
+        grad.addColorStop(1,'#0e1218');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0,0,W,H);
+
+        // constellation edges between clusters emerge with structure
+        ctx.globalAlpha = 0.15 + 0.45 * t;
+        ctx.lineWidth = 1 + 2 * t;
+        ctx.strokeStyle = 'rgba(138,165,255,0.8)';
+        ctx.beginPath();
+        clusters.forEach((c,i)=>{
+          const a = {x:c.x*W, y:c.y*H};
+          const b = clusters[(i+1)%clusters.length];
+          const bb = {x:b.x*W, y:b.y*H};
+          ctx.moveTo(a.x,a.y); ctx.lineTo(bb.x,bb.y);
+        });
+        ctx.stroke();
+
+        // particles
+        for (const p of particles){
+          // drift
+          p.vx += rand(-jitter,jitter);
+          p.vy += rand(-jitter,jitter);
+
+          // gentle wrap
+          p.x = (p.x + p.vx + 1) % 1;
+          p.y = (p.y + p.vy + 1) % 1;
+
+          // cluster attraction
+          const cx = p.cluster.x - p.x;
+          const cy = p.cluster.y - p.y;
+          p.vx += cx * pull * 0.1;
+          p.vy += cy * pull * 0.1;
+
+          // draw as short segments that align more as structure grows
+          const px = p.x * W, py = p.y * H;
+          const len = 8 + 34 * t; // longer when structured
+          const angle = t > 0.3 ? 0 : Math.atan2(p.vy, p.vx);
+          const dx = Math.cos(angle) * len;
+          const dy = Math.sin(angle) * len * (1 - gridSnap);
+
+          ctx.globalAlpha = 0.25 + 0.55 * t;
+          if (p.tone==='err') ctx.strokeStyle = '#ff9090';
+          else if (p.tone==='key') ctx.strokeStyle = '#8aa5ff';
+          else ctx.strokeStyle = '#7cf5c6';
+          ctx.lineWidth = 1 + 1.5 * t;
+
+          ctx.beginPath();
+          ctx.moveTo(px - dx*0.5, py - dy*0.5);
+          ctx.lineTo(px + dx*0.5, py + dy*0.5);
+          ctx.stroke();
+        }
+
+        requestAnimationFrame(draw);
+      }
+      requestAnimationFrame(draw);
+    </script>
+
+    <script>
+      // Subtle interactive polish: moving lens highlight follows pointer
+      const lens = document.querySelector('.lens-scan');
+      document.addEventListener('pointermove', (e) => {
+        const r = document.body.getBoundingClientRect();
+        const x = ((e.clientX - r.left) / r.width) * 100;
+        const y = ((e.clientY - r.top) / r.height) * 100;
+        lens && lens.style.setProperty('--x', x + '%');
+        lens && lens.style.setProperty('--y', y + '%');
+      });
+      // Log generator + transformer + view mode bound to entropy
+      const box = document.getElementById('logbox');
+      const tabs = Array.from(document.querySelectorAll('.tab'));
+      const ratio = document.getElementById('ratio');
+
+      const rawBuf = [];
+      const maskedBuf = [];
+      const templateCounts = new Map();
+      const maxBuf = 80;
+      let totalRawChars = 0;
+
+      function pad2(n){ return (n<10?'0':'')+n; }
+      function isoNow(){ const d=new Date(); return d.getUTCFullYear()+ '-' + pad2(d.getUTCMonth()+1) + '-' + pad2(d.getUTCDate()) + 'T' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()) + ':' + pad2(d.getUTCSeconds()) + 'Z'; }
+
+      function rand(a,b){ return a + Math.random()*(b-a); }
+      function randInt(a,b){ return Math.floor(rand(a,b+1)); }
+      function choice(arr){ return arr[(arr.length*Math.random())|0]; }
+
+      const users = Array.from({length: 60}, (_,i)=> 1000+i);
+      const ops = ['login','logout','purchase','reset_password','query','cache_get','cache_set'];
+      const statuses = ['ok','ok','ok','ok','fail'];
+      const errors = [
+        'Database connection failed: timeout',
+        'Database connection failed: ECONNREFUSED',
+        'S3 PutObject failed: 403 AccessDenied',
+        'Payment declined: insufficient_funds',
+        'NullPointerException at UserService:42',
+        '429 Too Many Requests from <IP>'
+      ];
+
+      function randomIP(){ return `${randInt(10,240)}.${randInt(0,255)}.${randInt(0,255)}.${randInt(1,254)}`; }
+      function randomUUID(){ const s=()=>Math.floor((1+Math.random())*0x10000).toString(16).slice(1); return `${s()+s()}-${s()}-${s()}-${s()}-${s()+s()+s()}`; }
+
+      function genPlain(){
+        const ts = isoNow();
+        const level = Math.random()<0.88? (Math.random()<0.1?'WARN':'INFO') : 'ERROR';
+        if (level==='ERROR') {
+          const msg = choice(errors).replace('<IP>', randomIP());
+          return `${ts} app[web.1]: ${level} ${msg}`;
+        }
+        const user = choice(users);
+        const op = choice(ops);
+        const ip = randomIP();
+        const latency = randInt(10, 400);
+        return `${ts} app[web.1]: ${level} user=${user} op=${op} ip=${ip} latency_ms=${latency}`;
+      }
+
+      function genJSON(){
+        const level = Math.random()<0.9? 'info' : 'error';
+        const base = { level, user_id: choice(users), op: choice(ops), request_id: randomUUID() };
+        if (level==='error') {
+          base.status = 'fail';
+          base.error = choice(errors).replace('<IP>', randomIP());
+          base.retry_count = randInt(0,3);
+        } else {
+          base.status = choice(statuses);
+          if (Math.random()<0.2) base.ip = randomIP();
+          if (Math.random()<0.3) base.latency_ms = randInt(8, 500);
+        }
+        return JSON.stringify(base);
+      }
+
+      function generateLine(){
+        return Math.random() < 0.65 ? genPlain() : genJSON();
+      }
+
+      function mask(line){
+        // JSON → synthetic key=val string; otherwise pass-through masking
+        let synthetic = line;
+        try {
+          const obj = JSON.parse(line);
+          const keys = Object.keys(obj).sort();
+          synthetic = keys.map(k => `${k}=${obj[k]}`).join(' ');
+        } catch(_) {}
+        return synthetic
+          .replace(/\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b/g, '<TIMESTAMP>')
+          .replace(/\b(?:INFO|WARN|ERROR|DEBUG|info|warn|error|debug)\b/g, '<LEVEL>')
+          .replace(/\b\d+\.\d+\.\d+\.\d+\b/g, '<IP>')
+          .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<UUID>')
+          .replace(/(user_id|user|latency_ms|retry_count|amount)=\d+/g, '$1=<NUM>')
+          .replace(/\b\d+\b/g, (m)=> m.length>3 ? '<NUM>' : m); // conservative
+      }
+
+      function toTemplate(masked){
+        return masked
+          .replace(/<TIMESTAMP>|<UUID>|<NUM>|<IP>/g, '<*>')
+          .replace(/\s+/g, ' ')
+          .replace(/^\s+|\s+$/g, '');
+      }
+
+      function tint(line){
+        return line
+          .replace(/\b(ERROR|INFO|WARN|DEBUG|error|info|warn|debug)\b/g, '<span class="err">$1</span>')
+          .replace(/([a-z0-9_]+)(=)/gi, '<span class="key">$1</span>$2')
+          .replace(/<([A-Z\*]+)>/g, '<span class="mask">&lt;$1&gt;</span>')
+          .replace(/(\d+\.\d+\.\d+\.\d+)/g, '<span class="val">$1</span>')
+          .replace(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/g, '<span class="muted">$1</span>');
+      }
+
+      function updateStats(){
+        const uniqueTemplates = Array.from(templateCounts.keys());
+        if (patternsEl) patternsEl.textContent = uniqueTemplates.length.toLocaleString();
+        const templatesChars = uniqueTemplates.reduce((a,t)=> a + t.length, 0) || 1;
+        const comp = Math.max(1, Math.round((totalRawChars / templatesChars)));
+        if (ratioLiveEl) ratioLiveEl.textContent = comp.toLocaleString() + '×';
+        // Also update demo ratio when in templates mode
+        if (ratio && currentMode()==='templates') ratio.textContent = comp.toLocaleString() + '× reduction (est)';
+      }
+
+      // Insight derivation (summary + patterns + schema + temporal bursts)
+      const insightsBox = document.getElementById('insightsBox');
+      let totalLines = 0; let t0 = Date.now();
+      const perSecond = new Map();
+      const baselineFields = new Set();
+      const schemaSeen = new Set();
+      const schemaAdded = new Set();
+      const schemaChanges = [];
+      const templateSeverity = new Map(); // tpl -> {ERROR: n, WARN: n, INFO: n}
+      const tplExample = new Map();      // tpl -> example raw line
+      const tplBuckets = new Map();      // tpl -> Map(second -> count)
+      const tplFirstSeen = new Map();    // tpl -> ms
+
+      function secKey(ts){ return Math.floor(ts/1000); }
+      function severityOf(line){
+        const s = line.toLowerCase();
+        if (s.includes('error')) return 'ERROR';
+        if (s.includes('warn')) return 'WARN';
+        return 'INFO';
+      }
+
+      function trackTemporal(tpl){
+        const now = Date.now();
+        const key = secKey(now);
+        perSecond.set(key, (perSecond.get(key)||0) + 1);
+        // per template
+        if (!tplBuckets.has(tpl)) tplBuckets.set(tpl, new Map());
+        const m = tplBuckets.get(tpl);
+        m.set(key, (m.get(key)||0) + 1);
+        // trim to last 90s
+        for (const k of Array.from(perSecond.keys())){
+          if (k < secKey(now) - 90) perSecond.delete(k);
+        }
+        if (m) {
+          for (const k of Array.from(m.keys())){
+            if (k < secKey(now) - 90) m.delete(k);
+          }
+        }
+      }
+
+      function trackSchemaMaybe(line){
+        try {
+          const obj = JSON.parse(line);
+          const fields = Object.keys(obj).sort();
+          // Initialize baseline once
+          if (baselineFields.size === 0) fields.forEach(f => baselineFields.add(f));
+          for (const f of fields){
+            const key = `f:${f}`;
+            if (!schemaSeen.has(key)){
+              schemaSeen.add(key);
+              if (!baselineFields.has(f) && !schemaAdded.has(f)){
+                schemaAdded.add(f);
+                schemaChanges.push({ change_type: 'field_added', field: f, at: new Date().toISOString() });
+                if (schemaChanges.length>6) schemaChanges.shift();
+              }
+            }
+          }
+        } catch(_){}
+      }
+
+      function updateInsights(){
+        // Summary
+        const uniqueTemplates = Array.from(templateCounts.keys());
+        const templatesChars = uniqueTemplates.reduce((a,t)=> a + t.length, 0) || 1;
+        const comp = Math.max(1, Math.round((totalRawChars / templatesChars)));
+        // insights header counter removed in UI
+
+        const nowISO = new Date().toISOString();
+        const startISO = new Date(t0).toISOString();
+        const summary = {
+          total_lines: totalLines,
+          unique_patterns: uniqueTemplates.length,
+          compression_ratio: comp,
+          time_span: `${startISO} to ${nowISO}`
+        };
+
+        // Patterns enriched to resemble AiOutput
+        const rows = Array.from(templateCounts.entries()).sort((a,b)=> b[1]-a[1]).slice(0,4);
+        const patterns = rows.map(([tpl,count]) => {
+          const sevCounts = templateSeverity.get(tpl) || {};
+          const severity = ['ERROR','WARN','INFO'].reduce((a,s)=> (sevCounts[s]||0)>(sevCounts[a]||0)? s : a, 'INFO');
+          // temporal per template
+          const m = tplBuckets.get(tpl) || new Map();
+          const vals = Array.from(m.values());
+          const med = vals.length ? vals.slice().sort((x,y)=>x-y)[Math.floor(vals.length/2)] : 0;
+          const thr = med ? med*3 : 0;
+          let bursts = 0, largest = null, maxv = 0;
+          for (const [k,v] of m){ if (thr && v>thr) bursts++; if (v>maxv){ maxv=v; largest=k; } }
+          const largest_burst = largest ? new Date(largest*1000).toISOString() : null;
+          // simple trend: last 3s vs prev 3s
+          const ks = Array.from(m.keys()).sort((a,b)=>a-b);
+          const last3 = ks.slice(-3).reduce((s,k)=> s + (m.get(k)||0), 0);
+          const prev3 = ks.slice(-6,-3).reduce((s,k)=> s + (m.get(k)||0), 0);
+          const trend = last3 > prev3 ? 'increasing' : (last3 < prev3 ? 'decreasing' : 'steady');
+          const freq = totalLines ? +(count / totalLines).toFixed(4) : 0;
+          const examples = tplExample.has(tpl) ? [tplExample.get(tpl)] : [];
+          return { template: tpl, frequency: freq, total_count: count, severity, temporal: { bursts, largest_burst, trend }, examples };
+        });
+
+        // Critical issues: count of ERROR patterns in top set
+        summary.critical_issues = patterns.filter(p => p.severity === 'ERROR').length;
+
+        // Schema changes tracked internally but not shown in UI
+
+        // Anomalies: new + rare patterns; temporal spikes
+        const nowMs = Date.now();
+        const pattern_anomalies = [];
+        const patternSeen = new Set();
+        function addPatternAnom(obj){ if (!patternSeen.has(obj.template) && pattern_anomalies.length < 2) { patternSeen.add(obj.template); pattern_anomalies.push(obj); } }
+        // new patterns (first 5s)
+        for (const [tpl, ms] of tplFirstSeen) {
+          if (pattern_anomalies.length >= 2) break;
+          if (nowMs - ms < 5000) addPatternAnom({ type: 'NewPattern', template: tpl, first_seen: new Date(ms).toISOString() });
+        }
+        // rare patterns (freq < 1%)
+        if (pattern_anomalies.length < 2) {
+          const allRows = Array.from(templateCounts.entries());
+          allRows.sort((a,b)=> (a[1]/Math.max(1,totalLines)) - (b[1]/Math.max(1,totalLines)));
+          for (const [tpl,count] of allRows) {
+            if (pattern_anomalies.length >= 2) break;
+            const freq = totalLines ? count/totalLines : 0;
+            if (freq > 0 && freq < 0.01) addPatternAnom({ type: 'RarePattern', template: tpl, frequency: +freq.toFixed(4) });
+          }
+        }
+        const temporal_anomalies = [];
+        const temporalSeen = new Set();
+        for (const [tpl, bucketsMap] of tplBuckets) {
+          const vals = Array.from(bucketsMap.values());
+          if (!vals.length) continue;
+          const med = vals.slice().sort((x,y)=>x-y)[Math.floor(vals.length/2)] || 0;
+          const thr = med ? med*3 : 0;
+          for (const [sec, v] of bucketsMap){
+            if (temporal_anomalies.length >= 2) break;
+            if (thr && v>thr && !temporalSeen.has(tpl)) { temporalSeen.add(tpl); temporal_anomalies.push({ type: 'FrequencySpike', template: tpl, at: new Date(sec*1000).toISOString(), value: v, baseline: med }); break; }
+          }
+          if (temporal_anomalies.length >= 2) break;
+        }
+        const anomalies = { temporal_anomalies, pattern_anomalies };
+        // Query hints omitted from UI in hero
+
+        // Place anomalies first; only show anomalies and patterns
+        const out = { anomalies, patterns };
+
+        function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        function section(key, obj, isLast=false){
+          const json = JSON.stringify(obj, null, 2);
+          const lines = json.split('\n');
+          // attach key with proper indentation and indent inner block by two spaces
+          const first = '  "' + key + '": ' + lines[0];
+          const rest = lines.slice(1).map(l => '  ' + l);
+          let block = [first].concat(rest).join('\n');
+          if (!isLast) block = block + ',';
+          return `<pre class="code">${esc(block)}</pre>`;
+        }
+
+        function docHTML(o){
+          const parts = [];
+          parts.push(`<pre class="code">{</pre>`);
+          parts.push(`<div class="anno"><h4>Anomalies</h4><p>High‑signal items first: temporal spikes and new/rare patterns.</p></div>`);
+          parts.push(section('anomalies', o.anomalies));
+          parts.push(`<div class="anno"><h4>Patterns</h4><p>Top templates with severity, trend, and examples.</p></div>`);
+          parts.push(section('patterns', o.patterns, true));
+          // No schema changes or query hints in hero view
+          // Close object after patterns
+          // Ensure trailing comma handling by marking patterns as last
+          parts.push(`<pre class="code">}</pre>`);
+          return parts.join('');
+        }
+
+        insightsBox.innerHTML = docHTML(out);
+      }
+
+      function render(mode){
+        // Update tabs selection where a dataset mode exists
+        tabs.forEach(t => { if (t.dataset && 'mode' in t.dataset) t.setAttribute('aria-selected', String(t.dataset.mode === mode)); });
+        let html;
+        if (mode==='raw') {
+          html = rawBuf.map(tint).join('\n');
+          if (ratio) ratio.textContent = '—';
+        } else if (mode==='masked') {
+          html = maskedBuf.map(tint).join('\n');
+          if (ratio) ratio.textContent = '—';
+        } else {
+          const rows = Array.from(templateCounts.entries()).sort((a,b)=> b[1]-a[1]);
+          html = rows.map(([tpl,cnt])=> `<span class="muted">${String(cnt).padStart(4,' ')}</span> × ${tint(tpl)}`).join('\n');
+        }
+        if (box) box.innerHTML = html;
+      }
+
+      function currentMode(){
+        const e = Number(getComputedStyle(root).getPropertyValue('--entropy')) || 0;
+        if (e >= 67) return 'raw';
+        if (e >= 34) return 'masked';
+        return 'templates';
+      }
+
+      function updateViewForEntropy(){
+        const m = currentMode();
+        render(m);
+        updateStats();
+      }
+
+      // Stream logs into buffers and stage stream
+      const streamLines = [];
+      function pushLine(line){
+        totalLines++;
+        totalRawChars += line.length + 1;
+        rawBuf.push(line);
+        if (rawBuf.length>maxBuf) rawBuf.shift();
+        const m = mask(line);
+        maskedBuf.push(m);
+        if (maskedBuf.length>maxBuf) maskedBuf.shift();
+        const tpl = toTemplate(m);
+        templateCounts.set(tpl, (templateCounts.get(tpl)||0) + 1);
+        if (!tplFirstSeen.has(tpl)) tplFirstSeen.set(tpl, Date.now());
+        // severity tally per template
+        const sev = severityOf(line);
+        const s = templateSeverity.get(tpl) || {}; s[sev] = (s[sev]||0) + 1; templateSeverity.set(tpl, s);
+        if (!tplExample.has(tpl)) tplExample.set(tpl, line);
+        // stream overlay buffer (keep ~100 lines)
+        streamLines.push(line);
+        while (streamLines.length>100) streamLines.shift();
+        // trackers
+        trackTemporal(tpl);
+        trackSchemaMaybe(line);
+      }
+
+      function renderStream(){
+        streamEl.textContent = streamLines.join('\n');
+      }
+
+      // Generator runs per frame; volume scales with entropy. UI throttled.
+      // Prime data at load to avoid empty insights flicker
+      (function primeData() {
+        const now = Date.now();
+        const windowSecs = 8;
+        for (let s = windowSecs; s >= 1; s--) {
+          const ts = now - s * 1000;
+          const linesThisSec = (s === 2) ? 60 : 14; // induce one spike
+          for (let i = 0; i < linesThisSec; i++) {
+            pushLine(generateLine(), ts);
+          }
+        }
+        renderStream();
+        updateViewForEntropy();
+        updateInsights();
+      })();
+
+      let genHandle; let lastUi = 0; const uiInterval = 33; // ~30 fps
+      function startGen(){
+        if (genHandle) cancelAnimationFrame(genHandle);
+        function loop(now){
+          const e = Number(getComputedStyle(root).getPropertyValue('--entropy')) || 0;
+          // lines per frame ramp: ~2 → ~120 (3x boost)
+          const lpf = Math.max(1, Math.round(2 + (e/100) ** 1.4 * 114));
+          for (let i=0; i<lpf; i++) pushLine(generateLine());
+          if (!lastUi || now - lastUi >= uiInterval) {
+            renderStream();
+            updateViewForEntropy();
+            updateInsights();
+            lastUi = now;
+          }
+          genHandle = requestAnimationFrame(loop);
+        }
+        genHandle = requestAnimationFrame(loop);
+      }
+      startGen();
+
+      // Auto-reveal: animate entropy from noise→clear in ~2s (no page scroll)
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      function autoReveal(duration=2000){
+        if (prefersReduced) { setEntropy(0); return; }
+        let start = null;
+        function step(ts){
+          if (!start) start = ts;
+          const p = Math.min(1, (ts - start) / duration);
+          // ease: cubic-out
+          const ease = 1 - Math.pow(1 - p, 3);
+          const e = Math.round(100 * (1 - ease));
+          setEntropy(e);
+          if (p < 1) requestAnimationFrame(step);
+          else { setEntropy(0); }
+        }
+        requestAnimationFrame(step);
+      }
+      autoReveal(2000);
+
+      // Initial draw for demo UI
+      updateViewForEntropy();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/ctrlc-b24883d2f21a306d.d: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/error.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/unix/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/signal.rs
+
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/libctrlc-b24883d2f21a306d.rlib: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/error.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/unix/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/signal.rs
+
+/Users/leonidbugaev/go/src/logoscope/logoscope/target/debug/deps/libctrlc-b24883d2f21a306d.rmeta: /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/lib.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/error.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/unix/mod.rs /Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/signal.rs
+
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/lib.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/error.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/mod.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/platform/unix/mod.rs:
+/Users/leonidbugaev/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/ctrlc-3.4.7/src/signal.rs:

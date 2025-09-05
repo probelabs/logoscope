@@ -1,0 +1,13 @@
+name = "logoscope-router"
+main = "worker.js"
+compatibility_date = "2025-01-14"
+
+# Routes configuration for probelabs.com/logoscope subdirectory
+[[routes]]
+pattern = "probelabs.com/logoscope"
+zone_name = "probelabs.com"
+
+[[routes]]
+pattern = "probelabs.com/logoscope/*"
+zone_name = "probelabs.com"
+
