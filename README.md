@@ -111,6 +111,82 @@ The summary is a single JSON document:
 - errors: { total, samples[] } with line numbers and kinds (e.g., malformed_json)
 - query_interface: available commands + suggested investigations
 
+Example summary.json (excerpt)
+-----------------------------
+
+```json
+{
+  "summary": {
+    "total_lines": 523412,
+    "unique_patterns": 142,
+    "compression_ratio": 3686.7,
+    "time_span": "2024-01-15T00:00:00Z to 2024-01-15T23:59:59Z"
+  },
+  "patterns": [
+    {
+      "template": "ERROR Database connection failed: <*>",
+      "total_count": 1320,
+      "frequency": 0.0025,
+      "severity": "ERROR",
+      "confidence": 0.82,
+      "temporal": {
+        "bursts": 2,
+        "largest_burst": "2024-01-15T14:20:00Z",
+        "trend": "increasing"
+      },
+      "correlations": [
+        { "template": "WARN Retry connection <*>", "count": 890, "strength": 0.41 }
+      ],
+      "sources": {
+        "by_service": [{ "name": "api", "count": 1210 }],
+        "by_host": [{ "name": "web-3", "count": 560 }]
+      },
+      "examples": [
+        "ERROR Database connection failed: timeout",
+        "ERROR Database connection failed: refused"
+      ]
+    }
+  ],
+  "schema_changes": [
+    {
+      "timestamp": "2024-01-15T14:19:45Z",
+      "change_type": "field_added",
+      "field": "retry_count",
+      "impact": "Correlates with error spike"
+    }
+  ],
+  "anomalies": {
+    "pattern_anomalies": [
+      { "kind": "NewPattern", "template": "WARN token validation failed: <*>", "frequency": 0.0004 }
+    ],
+    "field_anomalies": [
+      "numeric_outlier field=latency_ms value=12000.00 z=7.80 template=level=info op=query service=search ..."
+    ],
+    "temporal_anomalies": [
+      "burst template=ERROR Database connection failed: <*> start=2024-01-15T14:19:50Z end=2024-01-15T14:21:10Z peak=250"
+    ]
+  },
+  "errors": { "total": 3, "samples": [{ "line_number": 4242, "kind": "malformed_json" }] },
+  "query_interface": {
+    "available_commands": ["GET_LINES_BY_PATTERN", "GET_LINES_BY_TIME", "GET_CONTEXT"],
+    "suggested_investigations": [
+      {
+        "priority": "HIGH",
+        "description": "Database error burst at 14:20",
+        "query": {
+          "command": "GET_LINES_BY_TIME",
+          "params": {
+            "start": "2024-01-15T14:19:45Z",
+            "end": "2024-01-15T14:22:00Z",
+            "pattern": "ERROR Database connection failed: <*>"
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
 
 Security & Masking
 ------------------
@@ -126,6 +202,78 @@ Performance
 - Designed to scale: multi‑file input, per‑line streaming, fixed‑depth Drain tree
 - Streaming mode uses rolling windows with bounded memory
 - JSON flattening and maskers are fast; burst/gap detection is bucketized
+
+
+Realistic Examples: From Noise to Insight
+----------------------------------------
+
+1) Database outage diagnosis (spike + schema change)
+
+Symptoms: Users report login failures around 14:20 UTC. You run:
+```
+logoscope prod-app-*.log --only patterns --format table --match 'database|DB' --group-by level --sort bursts --top 5
+```
+You see a template like:
+```
+Count  Freq      Bursts   Confidence  Level      Template
+11700  0.0234    2        0.82        ERROR      ERROR Database connection failed: <*>
+```
+Follow up with time slice and context:
+```
+logoscope --only logs --start 2024-01-15T14:15:00Z --end 2024-01-15T14:30:00Z --pattern "ERROR Database connection failed: <*>" --before 2 --after 2 prod-app-*.log
+```
+In the full JSON summary (without `--only`), `schema_changes` shows:
+```json
+{
+  "timestamp": "2024-01-15T14:19:45Z",
+  "change_type": "field_added",
+  "field": "retry_count",
+  "impact": "Correlates with error spike"
+}
+```
+Insight: a new `retry_count` field appeared just before the DB error burst. Correlate with your deployment changelog and config.
+
+2) Performance regression (latency outliers)
+
+Run a pattern/field‑anomaly scan:
+```
+logoscope prod-api.ndjson > summary.json
+jq '.anomalies.field_anomalies[]' summary.json | head -5
+```
+Sample anomaly:
+```
+"numeric_outlier field=latency_ms value=12000.00 z=7.80 template=level=info op=query service=search ..."
+```
+Insight: a per‑pattern latency outlier with robust z‑score > 3.5 suggests a regression or hotspot. Use logs view to pull context around the spike’s time window.
+
+3) Rollout issue (new/rare pattern in auth only)
+
+Focus on auth service:
+```
+logoscope auth-*.log --only patterns --match 'token|auth' --group-by service --sort confidence
+```
+You notice a `NewPattern` in anomalies and `sources.by_service` shows `auth` dominance. Drill into the new template:
+```
+logoscope --only logs --pattern "WARN token validation failed: <*>" --service auth --before 2 --after 2 auth-*.log
+```
+Insight: A newly introduced warning appears only on auth hosts after the last deploy. Likely a config mismatch or library upgrade side‑effect.
+
+4) Always‑on streaming for early warnings
+
+Tail your logs and watch summaries plus pattern deltas:
+```
+kubectl logs -n prod deploy/api --since=1h -f | \
+  logoscope --follow --interval 10 --window 900 --max-lines 50000
+```
+You’ll see stderr status like:
+```
+[stream] lines=125430 patterns=142
+```
+And stdout deltas:
+```json
+{"template":"ERROR Database connection failed: <*>","delta":120,"total":1320}
+```
+Insight: spikes surface immediately without needing to trawl raw logs. Switch to logs view to extract context around the spike.
 
 
 CLI Reference
