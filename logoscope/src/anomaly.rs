@@ -23,8 +23,8 @@ pub fn detect_pattern_anomalies(
     if total == 0 { return out; }
     for (tpl, &count) in counts.iter() {
         let freq = (count as f64) / (total as f64);
-        // Treat "rare" only for known (baseline) templates; avoid duplicate New+Rare for the same template.
-        if !baseline_templates.contains(tpl) {
+        // Only emit NewPattern when there is a non-empty baseline; otherwise batch mode would mark everything new.
+        if !baseline_templates.is_empty() && !baseline_templates.contains(tpl) {
             out.push(PatternAnomaly { kind: AnomalyKind::NewPattern, template: tpl.clone(), frequency: freq });
         } else if freq < rare_threshold {
             out.push(PatternAnomaly { kind: AnomalyKind::RarePattern, template: tpl.clone(), frequency: freq });

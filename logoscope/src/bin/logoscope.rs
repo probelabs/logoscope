@@ -244,7 +244,9 @@ fn trim_buffer(buf: &mut std::collections::VecDeque<(String, Option<DateTime<Utc
 
 fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<DateTime<Utc>>)>, last_counts: &mut std::collections::HashMap<String, usize>) -> anyhow::Result<()> {
     let lines: Vec<&str> = buf.iter().map(|(s, _)| s.as_str()).collect();
-    let out = logoscope::ai::summarize_lines(&lines);
+    // Build baseline templates from the last emitted counts (streaming semantics)
+    let baseline: std::collections::HashSet<String> = last_counts.keys().cloned().collect();
+    let out = logoscope::ai::summarize_lines_with_baseline(&lines, &baseline);
     // Compact status to stderr
     eprintln!("[stream] lines={} patterns={}", out.summary.total_lines, out.patterns.len());
     // Deltas JSONL on stdout

@@ -119,15 +119,21 @@ pub struct CountItem {
     pub count: usize,
 }
 
+use std::collections::HashSet;
+
 pub fn summarize_lines(lines: &[&str]) -> AiOutput {
-    summarize_impl(lines, &[])
+    summarize_impl(lines, &[], None)
 }
 
 pub fn summarize_lines_with_hints<'a>(lines: &[&'a str], time_keys: &[&'a str]) -> AiOutput {
-    summarize_impl(lines, time_keys)
+    summarize_impl(lines, time_keys, None)
 }
 
-fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str]) -> AiOutput {
+pub fn summarize_lines_with_baseline<'a>(lines: &[&'a str], baseline_templates: &HashSet<String>) -> AiOutput {
+    summarize_impl(lines, &[], Some(baseline_templates))
+}
+
+fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Option<&HashSet<String>>) -> AiOutput {
     let total = lines.len();
     let mut min_ts: Option<chrono::DateTime<chrono::Utc>> = None;
     let mut max_ts: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -324,9 +330,11 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str]) -> AiOutput {
             }
         }
     }
-    // Pattern anomalies (new & rare) with default threshold
-    let baseline = std::collections::HashSet::<String>::new();
-    let pattern_anoms = anomaly::detect_pattern_anomalies(&counts, total, &baseline, 0.1);
+    // Pattern anomalies (new & rare) with default threshold (10%).
+    // NewPattern is only emitted when a non-empty baseline is provided (e.g., streaming mode).
+    let empty_baseline = std::collections::HashSet::<String>::new();
+    let baseline_ref = baseline_opt.unwrap_or(&empty_baseline);
+    let pattern_anoms = anomaly::detect_pattern_anomalies(&counts, total, baseline_ref, 0.1);
     let pattern_anomalies: Vec<PatternAnomalyOut> = pattern_anoms
         .into_iter()
         .map(|a| PatternAnomalyOut { kind: match a.kind { anomaly::AnomalyKind::NewPattern => "NewPattern".into(), anomaly::AnomalyKind::RarePattern => "RarePattern".into() }, template: a.template, frequency: a.frequency })
