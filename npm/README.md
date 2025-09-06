@@ -20,6 +20,44 @@ Usage
 -----
 
 ```
-logoscope --help
+# Analyze files or stdin
+logoscope app1.log app2.log > summary.json
+cat app.log | logoscope --only patterns --format table
 ```
 
+MCP Subcommand
+--------------
+
+This package exposes a Model Context Protocol (MCP) server as a subcommand to integrate with MCP‑compatible editors/agents.
+
+```
+# Start the MCP server over stdio
+logoscope mcp
+```
+
+Available Tools
+---------------
+
+- analyze_logs — Full JSON summary (accepts `stdin` or `files[]`, optional `timeKey[]`, `timeout`).
+- patterns_table — Patterns‑only table with filters (`top`, `minCount`, `minFrequency`, `match`, `exclude`, `level`, `examples`, `groupBy`, `sortBy`, `timeout`).
+- logs_slice — Raw log slice filtered by `start`, `end`, `pattern`, with `before`/`after` context.
+
+Example MCP Config (Claude Desktop)
+-----------------------------------
+
+Create or edit `~/.claude/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "logoscope": {
+      "type": "stdio",
+      "command": "logoscope",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Then ask your AI assistant to analyze logs using Logoscope tools.

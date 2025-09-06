@@ -62,6 +62,32 @@ Environment overrides (if you host releases elsewhere):
 - LOGOSCOPE_REPO_OWNER (default: your-org)
 - LOGOSCOPE_REPO_NAME (default: logoscope)
 
+MCP Integration
+---------------
+
+Run an MCP server as a subcommand of the npm CLI to integrate Logoscope with MCP‑compatible editors/agents (e.g., Claude Desktop, Cline):
+
+```
+logoscope mcp
+```
+
+Example Claude Desktop configuration (`~/.claude/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "logoscope": {
+      "type": "stdio",
+      "command": "logoscope",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Available tools: analyze_logs, patterns_table, logs_slice. Tools accept either inline `stdin` log text or `files` as absolute paths and return machine‑readable summaries or formatted tables.
+
 
 Core Usage Patterns
 -------------------

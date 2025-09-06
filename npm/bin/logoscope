@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 import { spawn } from 'child_process';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const isWindows = process.platform === 'win32';
-const binaryName = isWindows ? 'logoscope.exe' : 'logoscope';
-const binaryPath = join(__dirname, binaryName);
+const argv = process.argv.slice(2);
+const sub = argv[0];
 
-const child = spawn(binaryPath, process.argv.slice(2), { stdio: 'inherit' });
-child.on('exit', (code) => process.exit(code ?? 0));
-
+if (sub === 'mcp') {
+  // Run the MCP server implemented in JS, using stdio
+  const mcpEntry = resolve(__dirname, '..', 'src', 'mcp-server.js');
+  // Import dynamically to run in the same process; ensures stdio works for MCP
+  const url = pathToFileURL(mcpEntry).href;
+  import(url);
+} else {
+  // Default: proxy to native binary
+  const isWindows = process.platform === 'win32';
+  const binaryName = isWindows ? 'logoscope.exe' : 'logoscope';
+  const binaryPath = join(__dirname, binaryName);
+  const child = spawn(binaryPath, argv, { stdio: 'inherit' });
+  child.on('exit', (code) => process.exit(code ?? 0));
+}
