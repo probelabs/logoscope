@@ -49,6 +49,14 @@ impl DrainAdapter {
         Ok(to_generic_template(&lg.as_string()))
     }
 
+    pub fn insert_and_get_template_raw(&mut self, line: &str) -> Result<String, DrainError> {
+        let lg = self
+            .tree
+            .add_log_line(line)
+            .ok_or_else(|| DrainError::Generic("failed to add log line".into()))?;
+        Ok(lg.as_string())
+    }
+
     pub fn clusters(&self) -> Vec<DrainCluster> {
         self.tree
             .log_groups()
@@ -61,7 +69,7 @@ impl DrainAdapter {
     }
 }
 
-fn to_generic_template(s: &str) -> String {
+pub fn to_generic_template(s: &str) -> String {
     s.replace("<NUMBER>", "<*>")
         .replace("<IPV4>", "<*>")
         .replace("<IPV6>", "<*>")

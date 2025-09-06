@@ -32,6 +32,8 @@ pub struct PatternOut {
     pub correlations: Vec<CorrelatedOut>,
     pub confidence: f64,
     pub sources: SourceBreakdown,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain_template: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -230,18 +232,24 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         templates.push(String::new());
     }
 // Compute templates per line (sequential)
+    let mut drain_templates_raw: Vec<Option<String>> = vec![None; messages.len()];
     if opts.use_drain {
         let mut drain = drain_adapter::DrainAdapter::new_default();
         // Pass 1: build the tree with all lines
         for i in 0..messages.len() {
-            let drain_input = derived[i].base.replace("=", " = ");
+            let pre = masking::mask_text(&derived[i].base);
+            let drain_input = pre.replace("=", " = ");
             let _ = drain.insert(&drain_input);
         }
         // Pass 2: retrieve the final generalized template for each line
         for i in 0..messages.len() {
-            let drain_input = derived[i].base.replace("=", " = ");
-            match drain.insert_and_get_template(&drain_input) {
-                Ok(t) => { templates[i] = t; },
+            let pre = masking::mask_text(&derived[i].base);
+            let drain_input = pre.replace("=", " = ");
+            match drain.insert_and_get_template_raw(&drain_input) {
+                Ok(raw) => {
+                    drain_templates_raw[i] = Some(raw.clone());
+                    templates[i] = drain_adapter::to_generic_template(&raw);
+                },
                 Err(_) => { let masked = masking::mask_text(&derived[i].base); templates[i] = to_generic_template(&masked); }
             }
         }
@@ -343,6 +351,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
             correlations: related,
             confidence,
             sources: SourceBreakdown { by_service: svc_items, by_host: host_items },
+            drain_template: if opts.use_drain { idxs.get(0).and_then(|&i| drain_templates_raw[i].clone()) } else { None },
         });
         // Suggestions from bursts
         if let Some(b) = bursts.iter().max_by_key(|b| b.peak_rate) {
