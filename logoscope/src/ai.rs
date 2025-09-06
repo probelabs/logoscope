@@ -232,8 +232,15 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
 // Compute templates per line (sequential)
     if opts.use_drain {
         let mut drain = drain_adapter::DrainAdapter::new_default();
+        // Pass 1: build the tree with all lines
         for i in 0..messages.len() {
-            match drain.insert_and_get_template(&derived[i].base) {
+            let drain_input = derived[i].base.replace("=", " = ");
+            let _ = drain.insert(&drain_input);
+        }
+        // Pass 2: retrieve the final generalized template for each line
+        for i in 0..messages.len() {
+            let drain_input = derived[i].base.replace("=", " = ");
+            match drain.insert_and_get_template(&drain_input) {
                 Ok(t) => { templates[i] = t; },
                 Err(_) => { let masked = masking::mask_text(&derived[i].base); templates[i] = to_generic_template(&masked); }
             }
