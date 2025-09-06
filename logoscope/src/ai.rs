@@ -1,4 +1,4 @@
-use crate::{anomaly, schema, temporal, masking, parser, correlation};
+use crate::{anomaly, schema, temporal, masking, parser, correlation, drain_adapter};
 use serde::{Serialize, Deserialize};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -122,19 +122,34 @@ pub struct CountItem {
 
 use std::collections::HashSet;
 
+#[derive(Clone, Copy, Default)]
+pub struct SummarizeOpts {
+    pub use_drain: bool,
+}
+
+
 pub fn summarize_lines(lines: &[&str]) -> AiOutput {
-    summarize_impl(lines, &[], None)
+    summarize_impl(lines, &[], None, &SummarizeOpts::default())
 }
 
 pub fn summarize_lines_with_hints<'a>(lines: &[&'a str], time_keys: &[&'a str]) -> AiOutput {
-    summarize_impl(lines, time_keys, None)
+    summarize_impl(lines, time_keys, None, &SummarizeOpts::default())
 }
 
 pub fn summarize_lines_with_baseline<'a>(lines: &[&'a str], baseline_templates: &HashSet<String>) -> AiOutput {
-    summarize_impl(lines, &[], Some(baseline_templates))
+    summarize_impl(lines, &[], Some(baseline_templates), &SummarizeOpts::default())
 }
 
-fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Option<&HashSet<String>>) -> AiOutput {
+pub fn summarize_lines_with_opts<'a>(
+    lines: &[&'a str],
+    time_keys: &[&'a str],
+    baseline_templates: Option<&HashSet<String>>,
+    opts: &SummarizeOpts,
+) -> AiOutput {
+    summarize_impl(lines, time_keys, baseline_templates, opts)
+}
+
+fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Option<&HashSet<String>>, opts: &SummarizeOpts) -> AiOutput {
     let total = lines.len();
     let mut min_ts: Option<chrono::DateTime<chrono::Utc>> = None;
     let mut max_ts: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -143,7 +158,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     struct LineDeriv {
         message: String,
         timestamp: Option<chrono::DateTime<chrono::Utc>>,
-        template: String,
+        base: String,
         level: Option<String>,
         service: Option<String>,
         host: Option<String>,
@@ -174,8 +189,6 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
             } else {
                 rec.message.clone()
             };
-            let masked = masking::mask_text(&base);
-            let template = to_generic_template(&masked);
             let level = rec.flat_fields.as_ref().and_then(|f| f.get("level").cloned());
             let (service_opt, host_opt) = extract_source(&rec, &rec.message);
             let fingerprint = if rec.flat_fields.is_some() {
@@ -188,7 +201,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                 }
             } else { None };
 
-            LineDeriv { message: rec.message, timestamp: rec.timestamp, template, level, service: service_opt, host: host_opt, malformed_json, fingerprint }
+            LineDeriv { message: rec.message, timestamp: rec.timestamp, base, level, service: service_opt, host: host_opt, malformed_json, fingerprint }
         })
         .collect();
 
@@ -201,7 +214,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     let mut error_samples: Vec<ErrorSample> = Vec::new();
     let mut service_by_tpl: HashMap<String, HashMap<String, usize>> = HashMap::new();
     let mut host_by_tpl: HashMap<String, HashMap<String, usize>> = HashMap::new();
-    for (i, d) in derived.into_iter().enumerate() {
+    for (i, d) in derived.iter().enumerate() {
         if let Some(ts) = d.timestamp {
             min_ts = Some(match min_ts { Some(m) => m.min(ts), None => ts });
             max_ts = Some(match max_ts { Some(m) => m.max(ts), None => ts });
@@ -209,18 +222,39 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         if d.malformed_json && error_samples.len() < 10 {
             error_samples.push(ErrorSample { line_number: i + 1, kind: "malformed_json".into() });
         }
-        if let Some(fp) = d.fingerprint { json_fps.push((i, fp, d.timestamp)); }
-        if let Some(svc) = d.service.clone() {
-            *service_by_tpl.entry(d.template.clone()).or_default().entry(svc).or_insert(0) += 1;
-        }
-        if let Some(h) = d.host.clone() {
-            *host_by_tpl.entry(d.template.clone()).or_default().entry(h).or_insert(0) += 1;
-        }
-        messages.push(d.message);
+        if let Some(fp) = d.fingerprint.as_ref() { json_fps.push((i, fp.clone(), d.timestamp)); }
+        // service/host attribution computed after templates are assigned
+        messages.push(d.message.clone());
         timestamps.push(d.timestamp);
-        levels.push(d.level);
-        templates.push(d.template);
+        levels.push(d.level.clone());
+        templates.push(String::new());
     }
+// Compute templates per line (sequential)
+    if opts.use_drain {
+        let mut drain = drain_adapter::DrainAdapter::new_default();
+        for i in 0..messages.len() {
+            match drain.insert_and_get_template(&derived[i].base) {
+                Ok(t) => { templates[i] = t; },
+                Err(_) => { let masked = masking::mask_text(&derived[i].base); templates[i] = to_generic_template(&masked); }
+            }
+        }
+    } else {
+        for i in 0..messages.len() {
+            let masked = masking::mask_text(&derived[i].base);
+            templates[i] = to_generic_template(&masked);
+        }
+    }
+
+    // Now that templates are computed, build source attribution maps
+    for i in 0..messages.len() {
+        if let Some(svc) = derived[i].service.clone() {
+            *service_by_tpl.entry(templates[i].clone()).or_default().entry(svc).or_insert(0) += 1;
+        }
+        if let Some(h) = derived[i].host.clone() {
+            *host_by_tpl.entry(templates[i].clone()).or_default().entry(h).or_insert(0) += 1;
+        }
+    }
+
 // Cluster by template
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut idxs_by_tpl: HashMap<String, Vec<usize>> = HashMap::new();

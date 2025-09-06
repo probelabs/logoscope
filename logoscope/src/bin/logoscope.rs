@@ -65,6 +65,10 @@ struct Cli {
     #[arg(long = "group-by", default_value = "none")] group_by: String,
     /// Sort patterns by: count | freq | bursts | confidence (desc)
     #[arg(long = "sort", default_value = "count")] sort_by: String,
+
+    /// Use Drain algorithm for template clustering
+    #[arg(long = "drain", default_value_t = false)]
+    drain: bool,
 }
 
 fn read_all_lines(paths: &[String]) -> io::Result<Vec<String>> {
@@ -107,7 +111,7 @@ fn main() -> anyhow::Result<()> {
     let lines = read_all_lines(&cli.input)?;
     // Streaming mode (stdin only)
     if cli.follow {
-        run_streaming(cli.interval_secs, cli.window_secs, cli.max_lines, cli.fail_fast)?;
+        run_streaming(cli.interval_secs, cli.window_secs, cli.max_lines, cli.fail_fast, cli.drain)?;
         return Ok(());
     }
     let refs: Vec<&str> = lines.iter().map(|s| s.as_ref()).collect();
@@ -140,11 +144,12 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Full or patterns-only summary
+    let opts = logoscope::ai::SummarizeOpts { use_drain: cli.drain };
     let out = if cli.time_key.is_empty() {
-        logoscope::ai::summarize_lines(&refs)
+        logoscope::ai::summarize_lines_with_opts(&refs, &[], None, &opts)
     } else {
         let keys: Vec<&str> = cli.time_key.iter().map(|s| s.as_str()).collect();
-        logoscope::ai::summarize_lines_with_hints(&refs, &keys)
+        logoscope::ai::summarize_lines_with_opts(&refs, &keys, None, &opts)
     };
 
     if matches!(cli.only.as_deref(), Some("patterns")) {
@@ -187,7 +192,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fast: bool) -> anyhow::Result<()> {
+fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fast: bool, use_drain: bool) -> anyhow::Result<()> {
     use std::time::{Duration, Instant};
     use std::collections::{VecDeque, HashMap};
     use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
@@ -204,7 +209,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
     let mut last_counts: HashMap<String, usize> = HashMap::new();
     loop {
         if !running.load(Ordering::SeqCst) {
-            emit_summary_with_deltas(&buf, &mut last_counts)?;
+            emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
             break;
         }
         match reader.next() {
@@ -221,7 +226,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
                     buf.push_back((entry, rec.timestamp));
                     trim_buffer(&mut buf, window_secs, max_lines);
                     if last_emit.elapsed() >= Duration::from_secs(interval_secs) {
-                        emit_summary_with_deltas(&buf, &mut last_counts)?;
+                        emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
                         last_emit = Instant::now();
                     }
                 }
@@ -232,7 +237,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
             None => {
                 std::thread::sleep(Duration::from_millis(200));
                 if last_emit.elapsed() >= Duration::from_secs(interval_secs) {
-                    emit_summary_with_deltas(&buf, &mut last_counts)?;
+                    emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
                     last_emit = Instant::now();
                 }
             }
@@ -252,11 +257,12 @@ fn trim_buffer(buf: &mut std::collections::VecDeque<(String, Option<DateTime<Utc
     while buf.len() > max_lines { buf.pop_front(); }
 }
 
-fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<DateTime<Utc>>)>, last_counts: &mut std::collections::HashMap<String, usize>) -> anyhow::Result<()> {
+fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<DateTime<Utc>>)>, last_counts: &mut std::collections::HashMap<String, usize>, use_drain: bool) -> anyhow::Result<()> {
     let lines: Vec<&str> = buf.iter().map(|(s, _)| s.as_str()).collect();
     // Build baseline templates from the last emitted counts (streaming semantics)
     let baseline: std::collections::HashSet<String> = last_counts.keys().cloned().collect();
-    let out = logoscope::ai::summarize_lines_with_baseline(&lines, &baseline);
+    let opts = logoscope::ai::SummarizeOpts { use_drain };
+    let out = logoscope::ai::summarize_lines_with_opts(&lines, &[], Some(&baseline), &opts);
     // Compact status to stderr
     eprintln!("[stream] lines={} patterns={}", out.summary.total_lines, out.patterns.len());
     // Deltas JSONL on stdout

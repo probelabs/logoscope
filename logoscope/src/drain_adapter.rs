@@ -41,6 +41,14 @@ impl DrainAdapter {
         Ok(())
     }
 
+    pub fn insert_and_get_template(&mut self, line: &str) -> Result<String, DrainError> {
+        let lg = self
+            .tree
+            .add_log_line(line)
+            .ok_or_else(|| DrainError::Generic("failed to add log line".into()))?;
+        Ok(to_generic_template(&lg.as_string()))
+    }
+
     pub fn clusters(&self) -> Vec<DrainCluster> {
         self.tree
             .log_groups()
