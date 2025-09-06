@@ -1,5 +1,6 @@
 use crate::{anomaly, schema, temporal, masking, parser, correlation};
 use serde::{Serialize, Deserialize};
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +138,61 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     let total = lines.len();
     let mut min_ts: Option<chrono::DateTime<chrono::Utc>> = None;
     let mut max_ts: Option<chrono::DateTime<chrono::Utc>> = None;
-    // Collect per-line data
+    // Collect per-line data (parallel)
+    #[derive(Clone)]
+    struct LineDeriv {
+        message: String,
+        timestamp: Option<chrono::DateTime<chrono::Utc>>,
+        template: String,
+        level: Option<String>,
+        service: Option<String>,
+        host: Option<String>,
+        malformed_json: bool,
+        fingerprint: Option<schema::Fingerprint>,
+    }
+
+    let derived: Vec<LineDeriv> = lines
+        .par_iter()
+        .enumerate()
+        .map(|(i, l)| {
+            let looks_json = l.trim_start().starts_with('{') || l.trim_start().starts_with('[');
+            let rec = if time_keys.is_empty() { parser::parse_line(l, i + 1) } else { parser::parse_line_with_hints(l, i + 1, time_keys) };
+            let malformed_json = looks_json && rec.flat_fields.is_none();
+            // Build template base: for JSON, drop high-cardinality source keys
+            let base = if let Some(ff) = rec.flat_fields.as_ref() {
+                let mut items: Vec<(String,String)> = ff.iter().map(|(k,v)| (k.clone(), v.clone())).collect();
+                items.sort_by(|a,b| a.0.cmp(&b.0));
+                let drop_key = |k: &str| {
+                    k == "host" || k == "hostname" || k == "service" ||
+                    k.starts_with("kubernetes.") || k == "pod" || k == "namespace" || k == "container" || k == "container_id"
+                };
+                let s = items.into_iter()
+                    .filter(|(k,_)| !drop_key(k))
+                    .map(|(k,v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>().join(" ");
+                if s.is_empty() { rec.message.clone() } else { s }
+            } else {
+                rec.message.clone()
+            };
+            let masked = masking::mask_text(&base);
+            let template = to_generic_template(&masked);
+            let level = rec.flat_fields.as_ref().and_then(|f| f.get("level").cloned());
+            let (service_opt, host_opt) = extract_source(&rec, &rec.message);
+            let fingerprint = if rec.flat_fields.is_some() {
+                if let Some(rv) = rec.raw_json.as_ref() {
+                    Some(schema::fingerprint_value(rv))
+                } else {
+                    serde_json::from_str::<serde_json::Value>(&rec.message)
+                        .ok()
+                        .map(|v| schema::fingerprint_value(&v))
+                }
+            } else { None };
+
+            LineDeriv { message: rec.message, timestamp: rec.timestamp, template, level, service: service_opt, host: host_opt, malformed_json, fingerprint }
+        })
+        .collect();
+
+    // Combine derived data
     let mut messages: Vec<String> = Vec::with_capacity(total);
     let mut timestamps: Vec<Option<chrono::DateTime<chrono::Utc>>> = Vec::with_capacity(total);
     let mut levels: Vec<Option<String>> = Vec::with_capacity(total);
@@ -146,67 +201,27 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     let mut error_samples: Vec<ErrorSample> = Vec::new();
     let mut service_by_tpl: HashMap<String, HashMap<String, usize>> = HashMap::new();
     let mut host_by_tpl: HashMap<String, HashMap<String, usize>> = HashMap::new();
-    for (i, l) in lines.iter().enumerate() {
-        // Track malformed JSON attempts
-        let looks_json = l.trim_start().starts_with('{') || l.trim_start().starts_with('[');
-        let rec = if time_keys.is_empty() { parser::parse_line(l, i + 1) } else { parser::parse_line_with_hints(l, i + 1, time_keys) };
-        if looks_json {
-            // If it didn't parse as JSON (flat_fields None and synthetic None), record error sample
-            if rec.flat_fields.is_none() && rec.synthetic_message.is_none() {
-                if error_samples.len() < 10 {
-                    error_samples.push(ErrorSample { line_number: i + 1, kind: "malformed_json".into() });
-                }
-            }
-        }
-        let ts = rec.timestamp;
-        if let Some(ts) = ts {
+    for (i, d) in derived.into_iter().enumerate() {
+        if let Some(ts) = d.timestamp {
             min_ts = Some(match min_ts { Some(m) => m.min(ts), None => ts });
             max_ts = Some(match max_ts { Some(m) => m.max(ts), None => ts });
         }
-        // Build template base: for JSON, drop high-cardinality source keys
-        let base = if let Some(ff) = rec.flat_fields.as_ref() {
-            let mut items: Vec<(String,String)> = ff.iter().map(|(k,v)| (k.clone(), v.clone())).collect();
-            items.sort_by(|a,b| a.0.cmp(&b.0));
-            let drop_key = |k: &str| {
-                k == "host" || k == "hostname" || k == "service" ||
-                k.starts_with("kubernetes.") || k == "pod" || k == "namespace" || k == "container" || k == "container_id"
-            };
-            let s = items.into_iter()
-                .filter(|(k,_)| !drop_key(k))
-                .map(|(k,v)| format!("{}={}", k, v))
-                .collect::<Vec<String>>().join(" ");
-            if s.is_empty() { rec.message.clone() } else { s }
-        } else {
-            rec.message.clone()
-        };
-        let masked = masking::mask_text(&base);
-        let template = to_generic_template(&masked);
-        templates.push(template);
-        messages.push(rec.message.clone());
-        timestamps.push(rec.timestamp);
-        // capture level
-        let level = rec.flat_fields.as_ref().and_then(|f| f.get("level").cloned());
-        levels.push(level);
-        // capture service/host (JSON preferred)
-        let (service_opt, host_opt) = extract_source(&rec, &messages[i]);
-        if let Some(svc) = service_opt {
-            *service_by_tpl.entry(templates[i].clone()).or_default().entry(svc).or_insert(0) += 1;
+        if d.malformed_json && error_samples.len() < 10 {
+            error_samples.push(ErrorSample { line_number: i + 1, kind: "malformed_json".into() });
         }
-        if let Some(h) = host_opt {
-            *host_by_tpl.entry(templates[i].clone()).or_default().entry(h).or_insert(0) += 1;
+        if let Some(fp) = d.fingerprint { json_fps.push((i, fp, d.timestamp)); }
+        if let Some(svc) = d.service.clone() {
+            *service_by_tpl.entry(d.template.clone()).or_default().entry(svc).or_insert(0) += 1;
         }
-        if rec.flat_fields.is_some() {
-            if let Some(rv) = rec.raw_json.as_ref() {
-                json_fps.push((i, schema::fingerprint_value(rv), ts));
-            } else {
-                // Fallback: only if raw_json not available, parse once
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&messages[i]) {
-                    json_fps.push((i, schema::fingerprint_value(&v), ts));
-                }
-            }
+        if let Some(h) = d.host.clone() {
+            *host_by_tpl.entry(d.template.clone()).or_default().entry(h).or_insert(0) += 1;
         }
+        messages.push(d.message);
+        timestamps.push(d.timestamp);
+        levels.push(d.level);
+        templates.push(d.template);
     }
-    // Cluster by template
+// Cluster by template
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut idxs_by_tpl: HashMap<String, Vec<usize>> = HashMap::new();
     let mut times_by_tpl: HashMap<String, Vec<chrono::DateTime<chrono::Utc>>> = HashMap::new();

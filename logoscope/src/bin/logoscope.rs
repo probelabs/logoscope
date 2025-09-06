@@ -4,6 +4,15 @@ use std::io::{self, BufRead, BufReader};
 use logoscope::multiline::MultiLineAggregator;
 use chrono::{DateTime, Utc, SecondsFormat};
 use regex::Regex;
+use std::sync::Once;
+
+fn init_parallelism() {
+    static START: Once = Once::new();
+    START.call_once(|| {
+        let n = num_cpus::get();
+        let _ = rayon::ThreadPoolBuilder::new().num_threads(n).build_global();
+    });
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "logoscope", version, about = "AI-optimized log analysis", arg_required_else_help = true)]
@@ -93,6 +102,7 @@ fn read_all_lines(paths: &[String]) -> io::Result<Vec<String>> {
 }
 
 fn main() -> anyhow::Result<()> {
+    init_parallelism();
     let cli = Cli::parse();
     let lines = read_all_lines(&cli.input)?;
     // Streaming mode (stdin only)
