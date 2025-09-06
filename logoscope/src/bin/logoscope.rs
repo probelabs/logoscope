@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc, SecondsFormat};
 use regex::Regex;
 
 #[derive(Parser, Debug)]
-#[command(name = "logoscope", version, about = "AI-optimized log analysis")]
+#[command(name = "logoscope", version, about = "AI-optimized log analysis", arg_required_else_help = true)]
 struct Cli {
     /// Input files (`-` for stdin). May be repeated.
     #[arg(required = false)]
