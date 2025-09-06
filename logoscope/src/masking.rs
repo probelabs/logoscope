@@ -2,7 +2,9 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static RE_TIMESTAMP: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b").unwrap()
+    // ISO8601/RFC3339 with optional fractional seconds and timezone (Z or ±HH:MM or ±HHMM)
+    // Examples: 2025-08-07T06:41:18Z, 2025-08-07T06:41:18+01:00, 2025-08-07 06:41:18-0700
+    Regex::new(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b").unwrap()
 });
 
 static RE_URL: Lazy<Regex> = Lazy::new(|| {
