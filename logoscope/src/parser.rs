@@ -1,5 +1,4 @@
 use chrono::{DateTime, Datelike, NaiveDateTime, TimeZone, Utc};
-use itertools::Itertools;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -45,20 +44,14 @@ pub fn parse_line_with_hints(line: &str, line_number: usize, time_keys: &[&str])
                 }
             }
 
-            // Build synthetic message: stable key order key=value
-            let synthetic = Some(
-                flat.iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
-                    .join(" "),
-            );
-
             ParsedRecord {
                 format: LogFormat::Json,
                 line_number,
                 message,
                 timestamp: ts,
                 flat_fields: Some(flat),
-                synthetic_message: synthetic,
+                // Build synthetic message lazily where needed (query path)
+                synthetic_message: None,
                 raw_json: Some(v),
             }
         }

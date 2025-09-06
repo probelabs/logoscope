@@ -24,6 +24,18 @@ impl QueryIndex {
         let rec = parser::parse_line(line, id + 1);
         let base = if let Some(syn) = rec.synthetic_message.clone() {
             syn
+        } else if let Some(ff) = rec.flat_fields.as_ref() {
+            // Build a stable key=value string lazily for JSON
+            let mut items: Vec<(&String, &String)> = ff.iter().collect();
+            items.sort_by(|a,b| a.0.cmp(b.0));
+            let mut s = String::new();
+            for (i, (k,v)) in items.into_iter().enumerate() {
+                if i>0 { s.push(' '); }
+                s.push_str(k);
+                s.push('=');
+                s.push_str(v);
+            }
+            s
         } else {
             // Heuristic: strip syslog/app prefix up to last ": "
             if let Some(pos) = rec.message.rfind(": ") {
