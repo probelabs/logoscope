@@ -22,7 +22,7 @@ jobs:
             archive: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive: zip
+            archive: exe
 
     steps:
       - uses: actions/checkout@v4
@@ -43,8 +43,8 @@ jobs:
           OUTDIR=target/${{ matrix.target }}/release
           ART_BASE=${BIN_NAME}-${{ matrix.target }}
           mkdir -p dist
-          if [ "${{ matrix.archive }}" = "zip" ]; then
-            7z a dist/${ART_BASE}.zip ${OUTDIR}/${BIN_NAME}.exe > /dev/null
+          if [ "${{ matrix.archive }}" = "exe" ]; then
+            cp -f ${OUTDIR}/${BIN_NAME}.exe dist/${ART_BASE}.exe
           else
             tar -C ${OUTDIR} -czf dist/${ART_BASE}.tar.gz ${BIN_NAME}
           fi
@@ -58,4 +58,3 @@ jobs:
             dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
