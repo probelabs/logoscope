@@ -7,6 +7,13 @@ static RE_TIMESTAMP: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b").unwrap()
 });
 
+// Numbers with common unit suffixes (duration/size/percent). Preserve suffix.
+static RE_NUM_UNIT: Lazy<Regex> = Lazy::new(|| {
+    // Case-insensitive suffix match; optional fractional part; optional thin space before unit
+    // Examples: 15ms, 15.3ms, 2s, 1.5h, 120KB, 10MiB, 99%
+    Regex::new(r"(?i)\b-?\d+(?:\.\d+)?(?:\s*)(ms|us|µs|ns|s|m|h|kb|mb|gb|kib|mib|gib|b|%)\b").unwrap()
+});
+
 static RE_URL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s"']+\b"#).unwrap()
 });
@@ -69,6 +76,8 @@ pub fn mask_text(input: &str) -> String {
     let s = RE_PATH.replace_all(&s, "<PATH>");
     let s = RE_HEX.replace_all(&s, "<HEX>");
     let s = RE_B64.replace_all(&s, "<B64>");
+    // Replace number+unit tokens before generic float/int to avoid partial masking
+    let s = RE_NUM_UNIT.replace_all(&s, "<NUM>$1");
     let s = RE_FLOAT.replace_all(&s, "<NUM>");
     let s = RE_INT.replace_all(&s, "<NUM>");
     s.into_owned()
