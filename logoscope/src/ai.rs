@@ -367,9 +367,28 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str]) -> AiOutput {
         });
     }
 
+    // Deduplicate suggestions by query key, keeping the highest priority version
+    let mut best: std::collections::HashMap<String, SuggestionOut> = std::collections::HashMap::new();
+    fn prio_rank(p: &str) -> i32 { match p { "HIGH" => 3, "MEDIUM" => 2, _ => 1 } }
+    for s in suggestions.into_iter() {
+        let key = format!(
+            "{}|{}|{}|{}",
+            s.query.command,
+            s.query.params.start.clone().unwrap_or_default(),
+            s.query.params.end.clone().unwrap_or_default(),
+            s.query.params.pattern.clone().unwrap_or_default()
+        );
+        if let Some(existing) = best.get(&key) {
+            if prio_rank(&s.priority) <= prio_rank(&existing.priority) { continue; }
+        }
+        best.insert(key, s);
+    }
+    let mut deduped: Vec<SuggestionOut> = best.into_values().collect();
+    deduped.sort_by(|a,b| prio_rank(&b.priority).cmp(&prio_rank(&a.priority)));
+
     let query_interface = QueryInterfaceOut {
         available_commands: vec!["GET_LINES_BY_PATTERN".into(), "GET_LINES_BY_TIME".into(), "GET_CONTEXT".into()],
-        suggested_investigations: suggestions,
+        suggested_investigations: deduped,
     };
 
     AiOutput {
