@@ -17,6 +17,7 @@ pub struct ParsedRecord {
     pub timestamp: Option<DateTime<Utc>>, // extracted or None
     pub flat_fields: Option<BTreeMap<String, String>>, // for JSON
     pub synthetic_message: Option<String>,             // for JSON derived message
+    pub raw_json: Option<Value>,                       // original JSON value when format==Json
 }
 
 pub fn parse_line(line: &str, line_number: usize) -> ParsedRecord {
@@ -25,9 +26,9 @@ pub fn parse_line(line: &str, line_number: usize) -> ParsedRecord {
 
 pub fn parse_line_with_hints(line: &str, line_number: usize, time_keys: &[&str]) -> ParsedRecord {
     match serde_json::from_str::<Value>(line) {
-        Ok(Value::Object(map)) => {
+        Ok(v @ Value::Object(_)) => {
             let mut flat = BTreeMap::new();
-            flatten_json("", &Value::Object(map), &mut flat);
+            flatten_json("", &v, &mut flat);
 
             let message = line.trim_end().to_string();
 
@@ -58,6 +59,7 @@ pub fn parse_line_with_hints(line: &str, line_number: usize, time_keys: &[&str])
                 timestamp: ts,
                 flat_fields: Some(flat),
                 synthetic_message: synthetic,
+                raw_json: Some(v),
             }
         }
         _ => {
@@ -70,6 +72,7 @@ pub fn parse_line_with_hints(line: &str, line_number: usize, time_keys: &[&str])
                 timestamp,
                 flat_fields: None,
                 synthetic_message: None,
+                raw_json: None,
             }
         }
     }

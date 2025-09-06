@@ -195,7 +195,16 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         if let Some(h) = host_opt {
             *host_by_tpl.entry(templates[i].clone()).or_default().entry(h).or_insert(0) += 1;
         }
-        if let Some(_fields) = rec.flat_fields { json_fps.push((i, schema::fingerprint_value(&serde_json::from_str::<serde_json::Value>(&messages[i]).unwrap_or(serde_json::Value::Null)), ts)); }
+        if rec.flat_fields.is_some() {
+            if let Some(rv) = rec.raw_json.as_ref() {
+                json_fps.push((i, schema::fingerprint_value(rv), ts));
+            } else {
+                // Fallback: only if raw_json not available, parse once
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&messages[i]) {
+                    json_fps.push((i, schema::fingerprint_value(&v), ts));
+                }
+            }
+        }
     }
     // Cluster by template
     let mut counts: HashMap<String, usize> = HashMap::new();
