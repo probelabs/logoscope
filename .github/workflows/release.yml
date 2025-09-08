@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           BIN_NAME=logoscope
-          OUTDIR=target/${{ matrix.target }}/release
+          OUTDIR=logoscope/target/${{ matrix.target }}/release
           ART_BASE=${BIN_NAME}-${{ matrix.target }}
           mkdir -p dist
           if [ "${{ matrix.archive }}" = "exe" ]; then
