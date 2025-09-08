@@ -20,6 +20,7 @@ num_cpus = "1.16"
 grok = "1.2"
 lru = "0.12"
 ahash = "0.8"
+atty = "0.2"
 
 [[bin]]
 name = "benchmark_smart_masking"

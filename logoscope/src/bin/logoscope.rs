@@ -15,7 +15,22 @@ fn init_parallelism() {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "logoscope", version, about = "AI-optimized log analysis")]
+#[command(
+    name = "logoscope",
+    version,
+    about = "Gigabytes of logs → kilobytes of AI-ready insights",
+    long_about = "Logoscope - Pattern and anomaly log extraction for AI and humans
+
+Quick Start:
+  # Quick triage (fast anomaly detection)
+  logoscope --triage logs/app-*.log
+  
+  # Full analysis
+  logoscope logs/*.log --out analysis.json
+  
+  # Streaming logs
+  kubectl logs -f deployment/api | logoscope --follow --triage"
+)]
 struct Cli {
     /// Input files (`-` for stdin). May be repeated.
     #[arg(required = false)]
@@ -190,8 +205,55 @@ where
     Ok(())
 }
 
+fn print_help_and_exit() {
+    println!(r#"Logoscope - Gigabytes of logs → kilobytes of AI-ready insights
+
+Quick Start:
+  # Step 1: Quick triage (fast anomaly detection)
+  logoscope --triage logs/app-*.log
+  
+  # Step 2: Full analysis (if anomalies found)
+  logoscope logs/*.log --out analysis.json
+  
+  # Streaming logs
+  kubectl logs -n prod deploy/web --since=30m | logoscope --triage
+  journalctl -u api -o json | logoscope --out insights.json
+
+AI Integration (Claude Desktop):
+  # Add to Claude Desktop
+  claude mcp add logoscope -- npx -y @probelabs/logoscope@latest mcp
+  
+  # Then ask Claude:
+  "Analyze these logs: /var/log/app.log"
+
+For more options, run: logoscope --help
+"#);
+    std::process::exit(0);
+}
+
+fn has_stdin_data() -> bool {
+    use std::io::IsTerminal;
+    
+    // If stdin is not a terminal (e.g., piped), assume we have data
+    if !std::io::stdin().is_terminal() {
+        return true;
+    }
+    
+    // Otherwise, check if stdin has data available using a non-blocking read
+    false
+}
+
 fn main() -> anyhow::Result<()> {
     init_parallelism();
+    
+    // Check if no arguments and no stdin data
+    let args: Vec<String> = std::env::args().collect();
+    
+    // Show help if: only program name in args (no other arguments) AND no stdin data
+    if args.len() == 1 && !has_stdin_data() {
+        print_help_and_exit();
+    }
+    
     let cli = Cli::parse();
     
     // Pre-compile all regex patterns to avoid first-use contention in parallel processing
