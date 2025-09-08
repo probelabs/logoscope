@@ -68,37 +68,47 @@ async function runLogoscope(args = [], stdinText = '', timeoutMs) {
 function buildTools() {
   return [
     {
-      name: 'analyze_logs',
+      name: 'log_anomalies',
       description:
-        'Analyze logs and return a full JSON summary with patterns, temporal insights, schema changes, anomalies, and suggestions. Provide either inline logs via "stdin" or a list of absolute file paths via "files".',
+        'Quick log analysis focused on anomalies and patterns. Uses triage mode for fast processing. IMPORTANT: This method should ALWAYS be used first when you want to analyze logs - it provides a quick overview before deciding if full analysis is needed. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
       inputSchema: {
         type: 'object',
         properties: {
-          stdin: { type: 'string', description: 'Inline log text to analyze' },
-          files: {
+          paths: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Absolute file paths to analyze',
-          },
-          timeKey: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Timestamp field hints for JSON logs (e.g., time, ts)'
+            description: 'File paths or glob patterns to analyze (e.g., "/var/log/*.log", "/tmp/program_output.log")',
           },
           timeout: { type: 'number', description: 'Timeout in seconds (default 30)' },
         },
-        anyOf: [ { required: ['stdin'] }, { required: ['files'] } ],
+        required: ['paths'],
+      },
+    },
+    {
+      name: 'full_log_analysis',
+      description:
+        'Comprehensive log analysis with full patterns, temporal insights, schema changes, anomalies, and AI suggestions. Use this method only after running log_anomalies first to get the initial overview. This provides detailed analysis when you need complete insights. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          paths: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'File paths or glob patterns to analyze (e.g., "/var/log/*.log", "/tmp/program_output.log")',
+          },
+          timeout: { type: 'number', description: 'Timeout in seconds (default 60)' },
+        },
+        required: ['paths'],
       },
     },
     {
       name: 'patterns_table',
       description:
-        'Return a patterns-only view as a compact table with filtering, grouping, and sorting. Provide either inline logs via "stdin" or a list of files via "files".',
+        'Return a patterns-only view as a compact table with filtering, grouping, and sorting. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
       inputSchema: {
         type: 'object',
         properties: {
-          stdin: { type: 'string' },
-          files: { type: 'array', items: { type: 'string' } },
+          paths: { type: 'array', items: { type: 'string' }, description: 'File paths or glob patterns to analyze' },
           top: { type: 'number', description: 'Top N patterns to show' },
           minCount: { type: 'number' },
           minFrequency: { type: 'number' },
@@ -110,18 +120,17 @@ function buildTools() {
           sortBy: { type: 'string', enum: ['count', 'freq', 'bursts', 'confidence'] },
           timeout: { type: 'number' },
         },
-        anyOf: [ { required: ['stdin'] }, { required: ['files'] } ],
+        required: ['paths'],
       },
     },
     {
       name: 'logs_slice',
       description:
-        'Return a slice of raw logs filtered by time window and/or pattern with optional context lines.',
+        'Return a slice of raw logs filtered by time window and/or pattern with optional context lines. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
       inputSchema: {
         type: 'object',
         properties: {
-          stdin: { type: 'string' },
-          files: { type: 'array', items: { type: 'string' } },
+          paths: { type: 'array', items: { type: 'string' }, description: 'File paths or glob patterns to analyze' },
           start: { type: 'string', description: 'RFC3339 timestamp start' },
           end: { type: 'string', description: 'RFC3339 timestamp end' },
           pattern: { type: 'string', description: 'Template match to filter logs' },
@@ -129,7 +138,7 @@ function buildTools() {
           after: { type: 'number', description: 'Context lines after' },
           timeout: { type: 'number' },
         },
-        anyOf: [ { required: ['stdin'] }, { required: ['files'] } ],
+        required: ['paths'],
       },
     },
   ];
@@ -150,16 +159,21 @@ class LogoscopeMcpServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const name = req.params.name;
       try {
-        if (name === 'analyze_logs') {
+        if (name === 'log_anomalies') {
           const args = req.params.arguments || {};
           const timeoutMs = sec(args.timeout) ?? 30000;
-          const cli = [];
-          if (Array.isArray(args.timeKey)) {
-            for (const k of args.timeKey) cli.push('--time-key', String(k));
-          }
-          const files = Array.isArray(args.files) ? args.files.map(String) : [];
-          const stdin = typeof args.stdin === 'string' ? args.stdin : '';
-          const { out } = await runLogoscope(cli.concat(files), stdin, timeoutMs);
+          const cli = ['--triage']; // Quick analysis with triage mode
+          const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
+          const { out } = await runLogoscope(cli.concat(paths), '', timeoutMs);
+          return { content: [{ type: 'text', text: out }] };
+        }
+
+        if (name === 'full_log_analysis') {
+          const args = req.params.arguments || {};
+          const timeoutMs = sec(args.timeout) ?? 60000; // Longer timeout for full analysis
+          const cli = []; // No --triage flag for comprehensive analysis
+          const paths = Array.isArray(args.paths) ? args.paths.map(String) : [];
+          const { out } = await runLogoscope(cli.concat(paths), '', timeoutMs);
           return { content: [{ type: 'text', text: out }] };
         }
 
@@ -176,9 +190,8 @@ class LogoscopeMcpServer {
           if (a.examples != null) cli.push('--examples', String(a.examples));
           if (a.groupBy) cli.push('--group-by', String(a.groupBy));
           if (a.sortBy) cli.push('--sort', String(a.sortBy));
-          const files = Array.isArray(a.files) ? a.files.map(String) : [];
-          const stdin = typeof a.stdin === 'string' ? a.stdin : '';
-          const { out } = await runLogoscope(cli.concat(files), stdin, timeoutMs);
+          const paths = Array.isArray(a.paths) ? a.paths.map(String) : [];
+          const { out } = await runLogoscope(cli.concat(paths), '', timeoutMs);
           return { content: [{ type: 'text', text: out }] };
         }
 
@@ -191,9 +204,8 @@ class LogoscopeMcpServer {
           if (a.pattern) cli.push('--pattern', String(a.pattern));
           if (a.before != null) cli.push('--before', String(a.before));
           if (a.after != null) cli.push('--after', String(a.after));
-          const files = Array.isArray(a.files) ? a.files.map(String) : [];
-          const stdin = typeof a.stdin === 'string' ? a.stdin : '';
-          const { out } = await runLogoscope(cli.concat(files), stdin, timeoutMs);
+          const paths = Array.isArray(a.paths) ? a.paths.map(String) : [];
+          const { out } = await runLogoscope(cli.concat(paths), '', timeoutMs);
           return { content: [{ type: 'text', text: out }] };
         }
 

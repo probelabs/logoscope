@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
 
 // Re-export types from ai module that analyzers need
 use crate::ai::{ParameterAnomaly, DeepTemporalOut, DeepCorrelation, ParamFieldStats, CorrelatedOut};
@@ -62,6 +61,25 @@ pub trait AnalysisResult: Send + Sync {
 /// Parameter anomaly analyzer
 pub struct ParameterAnomalyAnalyzer;
 
+/// Helper function to get the base parameter type from potentially numbered parameters
+/// e.g., "NUM_2" -> "NUM", "IP_3" -> "IP", "NUM" -> "NUM"
+pub fn get_base_param_type(param_type: &str) -> &str {
+    if let Some(underscore_pos) = param_type.rfind('_') {
+        let suffix = &param_type[underscore_pos + 1..];
+        // Check if suffix is a number
+        if suffix.chars().all(|c| c.is_ascii_digit()) {
+            return &param_type[..underscore_pos];
+        }
+    }
+    param_type
+}
+
+/// Helper function to check if a parameter should be treated as high-cardinality numeric
+fn is_high_cardinality_numeric(param_type: &str, cardinality: usize, total: usize) -> bool {
+    let base_type = get_base_param_type(param_type);
+    base_type == "NS" || (base_type == "NUM" && cardinality as f64 / total as f64 > 0.9)
+}
+
 impl Analyzer for ParameterAnomalyAnalyzer {
     fn name(&self) -> &'static str {
         "parameter_anomaly"
@@ -79,15 +97,51 @@ impl Analyzer for ParameterAnomalyAnalyzer {
                 let top_ratio = stats.top_ratio;
                 
                 // Skip anomaly detection for time-based parameters (naturally unique)
-                let is_time_param = param_type == "TIME" || param_type == "TIMESTAMP" || 
-                                   param_type == "DATE" || param_type == "DATETIME";
+                let base_param_type = get_base_param_type(param_type);
+                let is_time_param = base_param_type == "TIME" || base_param_type == "TIMESTAMP" || 
+                                   base_param_type == "DATE" || base_param_type == "DATETIME";
                 
                 // Skip anomaly detection for high-cardinality numeric parameters (like nanoseconds)
-                let is_high_cardinality_numeric = param_type == "NS" || 
-                                                 (param_type == "NUM" && cardinality as f64 / total as f64 > 0.9);
+                let is_high_card_numeric = is_high_cardinality_numeric(param_type, cardinality, total);
+                
+                // Skip anomaly detection for sequences - use specialized sequence anomaly detection
+                if let Some(true) = stats.is_sequence {
+                    // Add sequence anomaly detection if needed
+                    if let Some(ref seq_info) = stats.sequence_info {
+                        // Detect anomalous sequences (e.g., sudden gaps, unexpected jumps)
+                        if seq_info.coverage_ratio < 0.9 {
+                            param_anoms.push(ParameterAnomaly {
+                                anomaly_type: "sequence_anomaly".to_string(),
+                                param: param_type.clone(),
+                                value: format!("{} → {} ({}% coverage)", 
+                                    seq_info.start_value, seq_info.end_value,
+                                    (seq_info.coverage_ratio * 100.0) as i32),
+                                count: Some(total),
+                                ratio: Some(seq_info.coverage_ratio),
+                                details: format!("Sequence has gaps: {} to {} with {}% coverage (step: {})",
+                                    seq_info.start_value, seq_info.end_value,
+                                    (seq_info.coverage_ratio * 100.0) as i32, seq_info.step_size),
+                            });
+                        }
+                        
+                        // Detect unusual step sizes (very large jumps)
+                        if seq_info.step_size.abs() > 1000 {
+                            param_anoms.push(ParameterAnomaly {
+                                anomaly_type: "large_sequence_step".to_string(),
+                                param: param_type.clone(),
+                                value: seq_info.step_size.to_string(),
+                                count: Some(total),
+                                ratio: None,
+                                details: format!("Sequence has unusually large step size: {} (range: {} to {})",
+                                    seq_info.step_size, seq_info.start_value, seq_info.end_value),
+                            });
+                        }
+                    }
+                    continue; // Skip traditional anomaly detection for sequences
+                }
                 
                 // Skip anomaly detection for time-based or high-cardinality numeric parameters
-                if is_time_param || is_high_cardinality_numeric {
+                if is_time_param || is_high_card_numeric {
                     continue;
                 }
                 
@@ -125,11 +179,10 @@ impl Analyzer for ParameterAnomalyAnalyzer {
                     param_anoms.push(ParameterAnomaly {
                         anomaly_type: "low_cardinality".to_string(),
                         param: param_type.clone(),
-                        value: format!("{} unique values", cardinality),
+                        value: format!("{cardinality} unique values"),
                         count: Some(total),
                         ratio: None,
-                        details: format!("Only {} distinct values seen across {} occurrences of '{}'",
-                            cardinality, total, param_type),
+                        details: format!("Only {cardinality} distinct values seen across {total} occurrences of '{param_type}'"),
                     });
                 } else if cardinality >= 4 && total >= 20 {
                     // Compute stats to check for balanced/imbalanced distribution
@@ -160,7 +213,7 @@ impl Analyzer for ParameterAnomalyAnalyzer {
                 }
                 
                 // Special alert for security-relevant parameters
-                if param_type == "IP" && cardinality == 1 && total >= 100 {
+                if base_param_type == "IP" && cardinality == 1 && total >= 100 {
                     param_anoms.push(ParameterAnomaly {
                         anomaly_type: "SECURITY_ALERT".to_string(),
                         param: param_type.clone(),
@@ -231,7 +284,7 @@ impl Analyzer for DeepCorrelationAnalyzer {
         "deep_correlation"
     }
 
-    fn analyze(&self, context: &AnalysisContext, _opts: &crate::ai::SummarizeOpts) -> Box<dyn AnalysisResult> {
+    fn analyze(&self, _context: &AnalysisContext, _opts: &crate::ai::SummarizeOpts) -> Box<dyn AnalysisResult> {
         // For correlation analysis, we need access to all templates, not just current one
         // This would need to be passed in the context or handled differently
         // For now, return empty correlations
@@ -254,6 +307,12 @@ impl AnalysisResult for DeepCorrelationResult {
 /// Main analyzer registry that manages all analyzers
 pub struct AnalyzerRegistry {
     analyzers: Vec<Box<dyn Analyzer>>,
+}
+
+impl Default for AnalyzerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnalyzerRegistry {
@@ -282,10 +341,9 @@ impl AnalyzerRegistry {
     pub fn build_pattern(
         pattern_data: PatternData, 
         opts: &crate::ai::SummarizeOpts,
-        total_lines: usize,
+        _total_lines: usize,
         times_by_template: Option<&std::collections::HashMap<String, Vec<DateTime<Utc>>>>
     ) -> crate::ai::PatternOut {
-        use crate::ai::optimize_template_with_stats;
         
         // Create analysis context
         let analysis_context = AnalysisContext {
@@ -313,7 +371,7 @@ impl AnalyzerRegistry {
         // DON'T optimize template here - keep the placeholders!
         // Template optimization should only happen in specific output modes (like triage)
         // For standard JSON output, we want to preserve the generic template with placeholders
-        let optimized_template = clean_template.clone();
+        let _optimized_template = clean_template.clone();
         
         // Update analysis context with clean template
         let mut final_context = analysis_context;

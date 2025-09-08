@@ -92,7 +92,7 @@ fn floor_time(t: DateTime<Utc>, bucket: Duration) -> DateTime<Utc> {
     Utc.timestamp_opt(floored, 0).unwrap()
 }
 
-fn median_count(v: &Vec<(DateTime<Utc>, usize)>) -> usize {
+fn median_count(v: &[(DateTime<Utc>, usize)]) -> usize {
     if v.is_empty() { return 0; }
     let mut counts: Vec<usize> = v.iter().map(|(_, c)| *c).collect();
     counts.sort_unstable();

@@ -1,5 +1,4 @@
 use crate::{anomaly, schema, temporal, parser, drain_adapter, param_extractor, analyzers};
-use analyzers::Analyzer;
 use chrono::TimeZone;
 use serde::{Serialize, Deserialize};
 use rayon::prelude::*;
@@ -77,11 +76,25 @@ pub struct Spike {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceInfo {
+    pub start_value: String,
+    pub end_value: String,
+    pub step_size: i64,
+    pub sequence_type: String, // "increasing", "decreasing"
+    pub coverage_ratio: f64,   // Percentage of values that follow the sequence pattern
+    pub total_span: usize,     // Total number of items in the sequence
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParamFieldStats {
     pub total: usize,
     pub cardinality: usize,
     pub values: Vec<ParamValueCount>,
     pub top_ratio: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_sequence: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence_info: Option<SequenceInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,7 +373,7 @@ pub fn summarize_lines_with_hints<'a>(lines: &[&'a str], time_keys: &[&'a str]) 
     summarize_impl(lines, time_keys, None, &SummarizeOpts::default())
 }
 
-pub fn summarize_lines_with_baseline<'a>(lines: &[&'a str], baseline_templates: &HashSet<String>) -> AiOutput {
+pub fn summarize_lines_with_baseline(lines: &[&str], baseline_templates: &HashSet<String>) -> AiOutput {
     summarize_impl(lines, &[], Some(baseline_templates), &SummarizeOpts::default())
 }
 
@@ -414,7 +427,7 @@ pub fn optimize_template_with_stats(template: &str, param_stats: &HashMap<String
     // Replace single-cardinality parameters with their actual values
     // Use regex replacement to ensure exact placeholder matching and avoid partial replacements
     for (param_type, stats) in param_stats.iter() {
-        if stats.cardinality == 1 && stats.values.len() > 0 {
+        if stats.cardinality == 1 && !stats.values.is_empty() {
             let placeholder_pattern = format!(r"<{}>", regex::escape(param_type));
             let actual_value = &stats.values[0].value;
             
@@ -476,7 +489,7 @@ pub fn create_triage_output(full_output: &AiOutput) -> TriageOutput {
                     if let Some(temporal) = pattern.temporal.as_ref() {
                         if let Some(largest_burst_time) = &temporal.largest_burst {
                             let trend_info = temporal.trend.as_ref()
-                                .map(|t| format!(" (trend: {})", t))
+                                .map(|t| format!(" (trend: {t})"))
                                 .unwrap_or_default();
                             
                             if burst_count > 1 {
@@ -533,11 +546,11 @@ pub fn create_triage_output(full_output: &AiOutput) -> TriageOutput {
     let mut insights = Vec::new();
     
     if error_count > 0 {
-        insights.push(format!("Found {} error log entries requiring immediate attention", error_count));
+        insights.push(format!("Found {error_count} error log entries requiring immediate attention"));
     }
     
     if burst_count > 0 {
-        insights.push(format!("{} patterns show burst behavior - check for system stress", burst_count));
+        insights.push(format!("{burst_count} patterns show burst behavior - check for system stress"));
     }
     
     if !full_output.anomalies.pattern_anomalies.is_empty() {
@@ -635,9 +648,9 @@ pub fn create_triage_output(full_output: &AiOutput) -> TriageOutput {
     
     // Create time range string
     let time_range = match (&full_output.summary.start_date, &full_output.summary.end_date) {
-        (Some(start), Some(end)) => Some(format!("{} to {}", start, end)),
-        (Some(start), None) => Some(format!("from {}", start)),
-        (None, Some(end)) => Some(format!("until {}", end)),
+        (Some(start), Some(end)) => Some(format!("{start} to {end}")),
+        (Some(start), None) => Some(format!("from {start}")),
+        (None, Some(end)) => Some(format!("until {end}")),
         (None, None) => None,
     };
     
@@ -678,42 +691,6 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         flat_fields: Option<std::collections::BTreeMap<String,String>>,
     }
 
-    /// Creates human-friendly templates by replacing generic placeholders with field-specific ones
-    /// For example: "api_id = <HEX> org_id = <HEX>" becomes "api_id = <API_ID> org_id = <ORG_ID>"
-    fn create_human_friendly_template(drain_template: &str, line_data: &LineDeriv) -> String {
-        let mut result = drain_template.to_string();
-        
-        // Get the flat fields from the structured data
-        if let Some(fields) = &line_data.flat_fields {
-            // Process field by field, replacing generic placeholders with field-specific ones
-            for (field_name, _field_value) in fields {
-                // Skip infrastructure fields we don't want to track
-                if field_name == "host" || field_name == "hostname" || field_name == "service" ||
-                   field_name.starts_with("kubernetes.") || field_name == "pod" || 
-                   field_name == "namespace" || field_name == "container" || field_name == "container_id" {
-                    continue;
-                }
-                
-                let field_pattern = format!("{} = ", field_name);
-                let field_upper = field_name.to_uppercase().replace("-", "_").replace(".", "_");
-                
-                // Look for patterns like "api_id = <HEX>" and replace with "api_id = <API_ID>"
-                if let Some(start_pos) = result.find(&field_pattern) {
-                    let after_equals = start_pos + field_pattern.len();
-                    if let Some(placeholder_start) = result[after_equals..].find('<') {
-                        let abs_placeholder_start = after_equals + placeholder_start;
-                        if let Some(placeholder_end) = result[abs_placeholder_start..].find('>') {
-                            let abs_placeholder_end = abs_placeholder_start + placeholder_end + 1;
-                            let new_placeholder = format!("<{}>", field_upper);
-                            result.replace_range(abs_placeholder_start..abs_placeholder_end, &new_placeholder);
-                        }
-                    }
-                }
-            }
-        }
-        
-        result
-    }
 
     /// Fast template-only humanizer that works on Drain templates directly
     /// This version infers field names from template structure without needing per-line data
@@ -739,7 +716,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                 }
                 
                 let field_upper = field_name.to_uppercase().replace("-", "_").replace(".", "_");
-                let replacement = format!("{} = <{}>", field_name, field_upper);
+                let replacement = format!("{field_name} = <{field_upper}>");
                 
                 // Only mark as replaced if we're actually changing something
                 if replacement != original {
@@ -777,7 +754,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                 };
                 let s = items.into_iter()
                     .filter(|(k,_)| !drop_key(k))
-                    .map(|(k,v)| format!("{}={}", k, v))
+                    .map(|(k,v)| format!("{k}={v}"))
                     .collect::<Vec<String>>().join(" ");
                 if s.is_empty() { rec.message.clone() } else { s }
             } else {
@@ -874,7 +851,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
             d.base.clone()
         };
         index_to_canon_key.push(canon_key.clone());
-        canon_groups.entry(canon_key).or_insert_with(Vec::new).push(i);
+        canon_groups.entry(canon_key).or_default().push(i);
     }
     
     // Canonicalize unique keys in parallel using Rayon
@@ -886,7 +863,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     
     // Create mapping from canonicalization key to result
     let key_to_canon: BTreeMap<String, param_extractor::MaskingResult> = 
-        unique_canon_keys.into_iter().zip(canon_results_unique.into_iter()).collect();
+        unique_canon_keys.into_iter().zip(canon_results_unique).collect();
     
     // Fan out canonicalization results to all original indices
     for (canon_key, indices) in canon_groups.iter() {
@@ -959,10 +936,8 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     
     // Build cache of human-friendly templates per unique raw Drain template
     let mut unique_drain_templates: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for drain_template_opt in &drain_templates_raw {
-        if let Some(raw) = drain_template_opt {
-            unique_drain_templates.insert(raw.clone());
-        }
+    for raw in drain_templates_raw.iter().flatten() {
+        unique_drain_templates.insert(raw.clone());
     }
     
     // Compute human-friendly templates only for unique Drain templates (cache computation)
@@ -1035,7 +1010,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     // Now that templates are computed, build source attribution maps using composite keys
     for i in 0..messages.len() {
         let level_suffix = if let Some(level) = &levels[i] {
-            format!(" [{}]", level)
+            format!(" [{level}]")
         } else {
             String::new()
         };
@@ -1057,11 +1032,11 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     for (i, tpl) in templates.iter().enumerate() {
         // Create composite key: template + log level to separate different severities
         let level_suffix = if let Some(level) = &levels[i] {
-            format!(" [{}]", level)
+            format!(" [{level}]")
         } else {
             String::new()
         };
-        let composite_key = format!("{}{}", tpl, level_suffix);
+        let composite_key = format!("{tpl}{level_suffix}");
         
         *counts.entry(composite_key.clone()).or_insert(0) += 1;
         idxs_by_tpl.entry(composite_key.clone()).or_default().push(i);
@@ -1145,10 +1120,10 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         let pattern_stability = (temporal_consistency * 0.6) + (freq_factor * 0.4);
 
         // sources breakdown top3
-        let mut svc_items: Vec<CountItem> = service_by_tpl.get(*tpl).map(|m| m.iter().map(|(k,v)| CountItem { name: k.clone(), count: *v }).collect()).unwrap_or_else(Vec::new);
+        let mut svc_items: Vec<CountItem> = service_by_tpl.get(*tpl).map(|m| m.iter().map(|(k,v)| CountItem { name: k.clone(), count: *v }).collect()).unwrap_or_default();
         svc_items.sort_by(|a,b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
         if svc_items.len() > 3 { svc_items.truncate(3); }
-        let mut host_items: Vec<CountItem> = host_by_tpl.get(*tpl).map(|m| m.iter().map(|(k,v)| CountItem { name: k.clone(), count: *v }).collect()).unwrap_or_else(Vec::new);
+        let mut host_items: Vec<CountItem> = host_by_tpl.get(*tpl).map(|m| m.iter().map(|(k,v)| CountItem { name: k.clone(), count: *v }).collect()).unwrap_or_default();
         host_items.sort_by(|a,b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
         if host_items.len() > 3 { host_items.truncate(3); }
 
@@ -1222,19 +1197,24 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                 .map(|(v,c)| ParamValueCount{ value: v.clone(), count: *c })
                 .collect();
             
-            let stats = ParamFieldStats { 
+            let base_stats = ParamFieldStats { 
                 total, 
                 cardinality, 
                 values: all_values.clone(), 
-                top_ratio 
+                top_ratio,
+                is_sequence: None,
+                sequence_info: None,
             };
-            param_stats.insert(param_type.clone(), stats);
+            
+            // Apply sequence detection and compaction (consistent with chunked mode)
+            let final_stats = apply_sequence_detection(base_stats, param_type);
+            param_stats.insert(param_type.clone(), final_stats);
         }
 
         // clean_template already computed above for placeholder extraction
         
         // Optimize template: replace single-cardinality placeholders with actual values
-        let optimized_template = optimize_template_with_stats(&clean_template, &param_stats);
+        let _optimized_template = optimize_template_with_stats(&clean_template, &param_stats);
         
         // In deep mode, include ALL parameter statistics without filtering; otherwise apply standard filtering
         let filtered_param_stats = if opts.deep {
@@ -1300,12 +1280,9 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         };
 
         // Use original fast manual approach for non-chunked mode
+        // Keep the template with placeholders (consistent with chunked mode)
         Some(PatternOut {
-            template: if filtered_param_stats.is_empty() { 
-                tpl.to_string() 
-            } else { 
-                optimize_template_with_stats(&clean_template, &filtered_param_stats)
-            },
+            template: tpl.to_string(),
             frequency: (cnt as f64) / (total as f64),
             total_count: cnt,
             severity,
@@ -1317,7 +1294,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
             correlations: related,
             pattern_stability,
             sources: SourceBreakdown { by_service: svc_items, by_host: host_items },
-            drain_template: idxs.get(0).and_then(|&i| drain_templates_raw[i].clone()),
+            drain_template: idxs.first().and_then(|&i| drain_templates_raw[i].clone()),
             param_stats: if filtered_param_stats.is_empty() { None } else { Some(filtered_param_stats.clone()) },
             parameter_anomalies: {
                 // Fast parameter anomaly detection
@@ -1392,7 +1369,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                 if param_anoms.is_empty() { None } else { Some(param_anoms) }
             },
             deep_temporal: if opts.deep && !ts_for_tpl.is_empty() {
-                Some(compute_deep_temporal(&ts_for_tpl, &clean_template, &line_params, &idxs))
+                Some(compute_deep_temporal(&ts_for_tpl, &clean_template, &line_params, idxs))
             } else { None },
             deep_correlations: if opts.deep {
                 Some(compute_deep_correlations(&times_by_tpl, tpl))
@@ -1402,10 +1379,8 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         .collect();
     
     // Collect patterns and suggestions
-    for pattern_opt in pattern_results {
-        if let Some(pattern) = pattern_opt {
-            patterns.push(pattern);
-        }
+    for pattern in pattern_results.into_iter().flatten() {
+        patterns.push(pattern);
     }
     
     // Process suggestions separately after patterns
@@ -1420,7 +1395,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         if let Some(b) = bursts.iter().max_by_key(|b| b.peak_rate) {
             suggestions.push(SuggestionOut {
                 priority: "HIGH".into(),
-                description: format!("Pattern burst for '{}'", tpl),
+                description: format!("Pattern burst for '{tpl}'"),
                 query: SuggestQuery {
                     command: "GET_LINES_BY_TIME".into(),
                     params: SuggestParams {
@@ -1463,7 +1438,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                     if let Some(ts) = last_ts {
                         let start = (*ts - chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                         let end = (*ts + chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema field added: {}", field), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
+                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema field added: {field}"), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
                     }
                 }
                 schema::SchemaChange::FieldRemoved { field, .. } => {
@@ -1471,7 +1446,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                     if let Some(ts) = last_ts {
                         let start = (*ts - chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                         let end = (*ts + chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema field removed: {}", field), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
+                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema field removed: {field}"), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
                     }
                 }
                 schema::SchemaChange::TypeChanged { field, .. } => {
@@ -1479,7 +1454,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
                     if let Some(ts) = last_ts {
                         let start = (*ts - chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
                         let end = (*ts + chrono::Duration::minutes(5)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema type changed: {}", field), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
+                        suggestions.push(SuggestionOut { priority: "MEDIUM".into(), description: format!("Schema type changed: {field}"), query: SuggestQuery { command: "GET_LINES_BY_TIME".into(), params: SuggestParams { start: Some(start), end: Some(end), pattern: None } } });
                     }
                 }
             }
@@ -1503,7 +1478,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
         })
         .collect();
     // Field anomalies using robust numeric stats and categorical explosions
-    let lines_refs: Vec<&str> = lines.iter().map(|s| *s).collect();
+    let lines_refs: Vec<&str> = lines.to_vec();
     let num_outliers = crate::field_anomaly::analyze_numeric_outliers(&lines_refs, 3.0);
     let cat_explosions = crate::field_anomaly::analyze_categorical_explosions(&lines_refs, 0.8, 10);
     let mut field_anomalies = Vec::new();
@@ -1581,7 +1556,7 @@ fn summarize_impl<'a>(lines: &[&'a str], time_keys: &[&'a str], baseline_opt: Op
     // Print timing information
     let total_time = start_time.elapsed();
     eprintln!("\n=== Performance Timing ===");
-    eprintln!("Total lines processed: {}", total);
+    eprintln!("Total lines processed: {total}");
     for (stage_name, duration) in &stage_times {
         eprintln!("{}: {:.3}s", stage_name, duration.as_secs_f64());
     }
@@ -1612,7 +1587,7 @@ fn trend_label(ts: &[chrono::DateTime<chrono::Utc>]) -> Option<String> {
     let mid = v.len()/2;
     let first = &v[..mid];
     let second = &v[mid..];
-    if second.len() == 0 { return None; }
+    if second.is_empty() { return None; }
     let rate1 = first.len() as f64 / ((first.last()?.timestamp() - first.first()?.timestamp()).abs().max(1) as f64);
     let rate2 = second.len() as f64 / ((second.last()?.timestamp() - second.first()?.timestamp()).abs().max(1) as f64);
     if rate2 > rate1 { Some("increasing".into()) } else if rate2 < rate1 { Some("decreasing".into()) } else { Some("steady".into()) }
@@ -1659,7 +1634,7 @@ pub fn compute_deep_temporal(
         if window_count > 0 {
             let activity_score = window_count as f64 / total_count as f64;
             time_clusters.push(TimeCluster {
-                time_window: format!("{:02}:00-{:02}:00", window_start, window_end),
+                time_window: format!("{window_start:02}:00-{window_end:02}:00"),
                 pattern_count: window_count,
                 dominant_pattern: template.to_string(),
                 activity_score,
@@ -1698,27 +1673,42 @@ pub fn compute_deep_temporal(
                         let prev_window = &sorted_indices[(window_idx - 1) * window_size..window_idx * window_size];
                         
                         // Get parameter distributions for both windows
-                        for param_type in ["IP", "NUM", "HEX", "PATH", "URL"].iter() {
+                        // Collect all parameter types from the current line params, then group by base type
+                        let mut base_param_types = std::collections::HashSet::new();
+                        for &(idx, _) in window_indices {
+                            if let Some(params) = line_params.get(idx) {
+                                for param_type in params.keys() {
+                                    let base_type = crate::analyzers::get_base_param_type(param_type);
+                                    base_param_types.insert(base_type.to_string());
+                                }
+                            }
+                        }
+                        
+                        for base_param_type in base_param_types.iter() {
                             let mut curr_param_counts = HashMap::new();
                             let mut prev_param_counts = HashMap::new();
                             
-                            // Current window parameter values
+                            // Current window parameter values - aggregate all numbered variants of this base type
                             for &(idx, _) in window_indices {
                                 if let Some(params) = line_params.get(idx) {
-                                    if let Some(values) = params.get(*param_type) {
-                                        for value in values {
-                                            *curr_param_counts.entry(value.clone()).or_insert(0) += 1;
+                                    for (param_name, values) in params.iter() {
+                                        if crate::analyzers::get_base_param_type(param_name) == base_param_type {
+                                            for value in values {
+                                                *curr_param_counts.entry(value.clone()).or_insert(0) += 1;
+                                            }
                                         }
                                     }
                                 }
                             }
                             
-                            // Previous window parameter values
+                            // Previous window parameter values - aggregate all numbered variants of this base type
                             for &(idx, _) in prev_window {
                                 if let Some(params) = line_params.get(idx) {
-                                    if let Some(values) = params.get(*param_type) {
-                                        for value in values {
-                                            *prev_param_counts.entry(value.clone()).or_insert(0) += 1;
+                                    for (param_name, values) in params.iter() {
+                                        if crate::analyzers::get_base_param_type(param_name) == base_param_type {
+                                            for value in values {
+                                                *prev_param_counts.entry(value.clone()).or_insert(0) += 1;
+                                            }
                                         }
                                     }
                                 }
@@ -1743,7 +1733,7 @@ pub fn compute_deep_temporal(
                                     };
                                     
                                     parameter_shifts.push(ParameterShift {
-                                        parameter: param_type.to_string(),
+                                        parameter: base_param_type.clone(),
                                         old_dominant_value: prev.clone(),
                                         new_dominant_value: curr.clone(),
                                         change_ratio,
@@ -1784,7 +1774,7 @@ pub fn compute_deep_temporal(
         
         // Analyze hour of day
         let hour = b.start_time.hour();
-        if hour >= 9 && hour <= 17 {
+        if (9..=17).contains(&hour) {
             contributing_factors.push("Business hours activity".to_string());
         } else if hour <= 6 {
             contributing_factors.push("Off-hours activity - investigate".to_string());
@@ -1867,7 +1857,7 @@ pub fn compute_deep_correlations(
                     let co_occurrence_rate = co_occurrences as f64 / current_set.len() as f64;
                     
                     // Calculate correlation strength based on mutual proximity
-                    let strength = if current_set.len() > 0 && other_set.len() > 0 {
+                    let strength = if !current_set.is_empty() && !other_set.is_empty() {
                         let forward_correlation = current_near_other as f64 / (current_set.len() * other_set.len()) as f64;
                         let backward_correlation = other_near_current as f64 / (current_set.len() * other_set.len()) as f64;
                         (forward_correlation + backward_correlation) / 2.0
@@ -1986,6 +1976,12 @@ pub struct StreamingSummarizer {
     error_samples: Vec<ErrorSample>,
 }
 
+impl Default for StreamingSummarizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StreamingSummarizer {
     pub fn new() -> Self {
         Self {
@@ -2037,7 +2033,7 @@ impl StreamingSummarizer {
                         return caps[0].to_string();
                     }
                     let field_upper = field_name.to_uppercase().replace("-", "_").replace(".", "_");
-                    let replacement = format!("{} = <{}>", field_name, field_upper);
+                    let replacement = format!("{field_name} = <{field_upper}>");
                     let original = &caps[0];
                     
                     // Only mark as replaced if we're actually changing something
@@ -2059,7 +2055,7 @@ impl StreamingSummarizer {
     }
 
     /// Ingest a chunk of aggregated log records.
-    pub fn ingest_chunk<'a>(&mut self, lines: &[String], time_keys: &[&'a str], opts: &SummarizeOpts) {
+    pub fn ingest_chunk(&mut self, lines: &[String], time_keys: &[&str], opts: &SummarizeOpts) {
         use rayon::prelude::*;
         use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -2100,7 +2096,7 @@ impl StreamingSummarizer {
                     };
                     let s = items.into_iter()
                         .filter(|(k,_)| !drop_key(k))
-                        .map(|(k,v)| format!("{}={}", k, v))
+                        .map(|(k,v)| format!("{k}={v}"))
                         .collect::<Vec<String>>().join(" ");
                     if s.is_empty() { rec.message.clone() } else { s }
                 } else {
@@ -2221,7 +2217,7 @@ impl StreamingSummarizer {
             };
             self.masked_to_template.insert(masked.clone(), tpl);
         }
-        self.unique_masked.extend(newly_masked.into_iter());
+        self.unique_masked.extend(newly_masked);
 
         // Fan out: attach masked_text + extract params
         let line_templates_raw: Vec<String> = derived
@@ -2250,11 +2246,11 @@ impl StreamingSummarizer {
             let raw_tpl = &line_templates_raw[i];
             let human_tpl = self.humanize_drain_template(raw_tpl);
             let level_suffix = if let Some(level) = &d.level {
-                format!(" [{}]", level)
+                format!(" [{level}]")
             } else {
                 String::new()
             };
-            let composite_key = format!("{}{}", human_tpl, level_suffix);
+            let composite_key = format!("{human_tpl}{level_suffix}");
 
             // recompute params for this line (single-threaded merge; small cost)
             // For JSON logs, look up by message; for others by base
@@ -2370,12 +2366,12 @@ impl StreamingSummarizer {
             // sources (top 3)
             let mut svc_items: Vec<CountItem> = self.service_by_tpl.get(tpl)
                 .map(|m| m.iter().map(|(k,v)| CountItem{ name: k.clone(), count: *v }).collect())
-                .unwrap_or_else(|| Vec::new());
+                .unwrap_or_default();
             svc_items.sort_by(|a,b| b.count.cmp(&a.count).then(a.name.cmp(&b.name)));
             if svc_items.len() > 3 { svc_items.truncate(3); }
             let mut host_items: Vec<CountItem> = self.host_by_tpl.get(tpl)
                 .map(|m| m.iter().map(|(k,v)| CountItem{ name: k.clone(), count: *v }).collect())
-                .unwrap_or_else(|| Vec::new());
+                .unwrap_or_default();
             host_items.sort_by(|a,b| b.count.cmp(&a.count).then(a.name.cmp(&b.name)));
             if host_items.len() > 3 { host_items.truncate(3); }
             // param stats
@@ -2390,17 +2386,23 @@ impl StreamingSummarizer {
                     let top_ratio = if total > 0 { top[0].1 as f64 / total as f64 } else { 0.0 };
                     let values_out: Vec<ParamValueCount> = top.into_iter()
                         .map(|(v,c)| ParamValueCount{ value: v, count: c }).collect();
-                    out.insert(param.clone(), ParamFieldStats {
+                    let base_stats = ParamFieldStats {
                         total,
                         cardinality,
                         values: values_out,
                         top_ratio,
-                    });
+                        is_sequence: None,
+                        sequence_info: None,
+                    };
+                    
+                    // Apply sequence detection and compaction
+                    let final_stats = apply_sequence_detection(base_stats, param);
+                    out.insert(param.clone(), final_stats);
                 }
                 out
             });
 
-            let clean_template = if let Some(bracket_pos) = tpl.rfind(" [") {
+            let _clean_template = if let Some(bracket_pos) = tpl.rfind(" [") {
                 let suffix = &tpl[bracket_pos..];
                 if suffix.ends_with(']') && !suffix.contains('<') && !suffix.contains('>') {
                     tpl[..bracket_pos].to_string()
@@ -2470,7 +2472,7 @@ impl StreamingSummarizer {
                 service_breakdown: svc_items,
                 host_breakdown: host_items,
                 drain_template: None,
-                param_stats: param_stats,
+                param_stats,
                 timestamps,
                 line_params: self.line_params_by_tpl.get(tpl).cloned().unwrap_or_default(),
                 pattern_indices: (0..self.timestamps_by_tpl.get(tpl).map(|v| v.len()).unwrap_or(0)).collect(),
@@ -2486,7 +2488,7 @@ impl StreamingSummarizer {
                     if let Some(st) = st {
                         suggestions.push(SuggestionOut {
                             priority: "HIGH".into(),
-                            description: format!("Pattern burst for '{}'", tpl),
+                            description: format!("Pattern burst for '{tpl}'"),
                             query: SuggestQuery {
                                 command: "GET_LINES_BY_TIME".into(),
                                 params: SuggestParams {
@@ -2581,4 +2583,298 @@ impl StreamingSummarizer {
 pub fn prewarm_regexes() {
     // Force initialization of template field pattern
     let _ = &*TEMPLATE_FIELD_PATTERN;
+}
+
+/// Applies sequence detection to parameter statistics and compacts sequences
+pub fn apply_sequence_detection(mut stats: ParamFieldStats, param_type: &str) -> ParamFieldStats {
+    // Only apply sequence detection to numeric parameters
+    let base_param_type = get_base_param_type(param_type);
+    if base_param_type != "NUM" {
+        stats.is_sequence = Some(false);
+        return stats;
+    }
+    
+    // Need at least 2 values to form a sequence
+    if stats.cardinality < 2 {
+        stats.is_sequence = Some(false);
+        return stats;
+    }
+    
+    // Try to detect sequence
+    if let Some(sequence_info) = detect_numeric_sequence(&stats.values) {
+        // Compact the sequence representation
+        let total_count: usize = stats.values.iter().map(|v| v.count).sum();
+        let sequence_representation = format!("{} → {} (sequence of {})", 
+            sequence_info.start_value, 
+            sequence_info.end_value,
+            sequence_info.total_span
+        );
+        
+        // If coverage is not 100%, need to separate sequence from outliers
+        if sequence_info.coverage_ratio < 1.0 {
+            let sequence_values = generate_sequence_values(&sequence_info);
+            let mut sequence_count = 0;
+            let mut outliers = Vec::new();
+            
+            for value_count in stats.values {
+                if sequence_values.contains(&value_count.value) {
+                    sequence_count += value_count.count;
+                } else {
+                    outliers.push(value_count);
+                }
+            }
+            
+            let mut new_values = vec![ParamValueCount {
+                value: sequence_representation,
+                count: sequence_count,
+            }];
+            
+            // Sort outliers by count (descending) then add them
+            outliers.sort_by(|a, b| b.count.cmp(&a.count).then(a.value.cmp(&b.value)));
+            new_values.extend(outliers);
+            stats.values = new_values;
+        } else {
+            // Replace entirely with compact representation
+            stats.values = vec![ParamValueCount {
+                value: sequence_representation,
+                count: total_count,
+            }];
+        }
+        
+        stats.is_sequence = Some(true);
+        stats.sequence_info = Some(sequence_info);
+        
+        // Recalculate top_ratio with new compact representation
+        if stats.total > 0 {
+            stats.top_ratio = stats.values[0].count as f64 / stats.total as f64;
+        }
+    } else {
+        stats.is_sequence = Some(false);
+    }
+    
+    stats
+}
+
+/// Detects numeric sequences in parameter values
+fn detect_numeric_sequence(values: &[ParamValueCount]) -> Option<SequenceInfo> {
+    // Parse all values as integers, filtering out non-integers
+    let mut parsed_values: Vec<(i64, usize)> = Vec::new();
+    
+    for value_count in values {
+        if let Some(num) = parse_as_integer(&value_count.value) {
+            parsed_values.push((num, value_count.count));
+        }
+    }
+    
+    // Need at least 2 numeric values for a sequence
+    if parsed_values.len() < 2 {
+        return None;
+    }
+    
+    // Try to detect arithmetic sequence both ways: sorted ascending and descending
+    let mut ascending = parsed_values.clone();
+    ascending.sort_by_key(|(num, _)| *num);
+    
+    let mut descending = parsed_values;
+    descending.sort_by_key(|(num, _)| std::cmp::Reverse(*num));
+    
+    // Try both directions and pick the better result
+    let asc_result = detect_arithmetic_sequence(&ascending);
+    let desc_result = detect_arithmetic_sequence(&descending);
+    
+    match (asc_result, desc_result) {
+        (Some(asc), Some(desc)) => {
+            // Both succeeded, pick the one with better coverage
+            if desc.coverage_ratio > asc.coverage_ratio {
+                Some(desc)
+            } else if asc.coverage_ratio > desc.coverage_ratio {
+                Some(asc)
+            } else {
+                // Same coverage, prefer the one with unit step size
+                if asc.step_size.abs() == 1 && desc.step_size.abs() != 1 {
+                    Some(asc)
+                } else if desc.step_size.abs() == 1 && asc.step_size.abs() != 1 {
+                    Some(desc)
+                } else {
+                    // Both have same coverage and step size characteristics
+                    // Choose based on which direction makes logical sense for the data
+                    let asc_start: i64 = asc.start_value.parse().unwrap_or(0);
+                    let asc_end: i64 = asc.end_value.parse().unwrap_or(0);
+                    let desc_start: i64 = desc.start_value.parse().unwrap_or(0);
+                    let desc_end: i64 = desc.end_value.parse().unwrap_or(0);
+                    
+                    // Check for logical consistency
+                    let asc_consistent = (asc.sequence_type == "increasing" && asc_start < asc_end) ||
+                                       (asc.sequence_type == "decreasing" && asc_start > asc_end);
+                    let desc_consistent = (desc.sequence_type == "increasing" && desc_start < desc_end) ||
+                                        (desc.sequence_type == "decreasing" && desc_start > desc_end);
+                    
+                    if asc_consistent && !desc_consistent {
+                        Some(asc)
+                    } else if desc_consistent && !asc_consistent {
+                        Some(desc)
+                    } else if asc_consistent && desc_consistent {
+                        // Both are consistent, need to determine which one matches the natural data order better
+                        // Check which direction the original data was trending
+                        
+                        // Get first few and last few values from the original data to detect trend
+                        let first_val = values.first().and_then(|v| parse_as_integer(&v.value));
+                        let last_val = values.last().and_then(|v| parse_as_integer(&v.value));
+                        
+                        match (first_val, last_val) {
+                            (Some(first), Some(last)) => {
+                                if first < last {
+                                    // Original data trends upward, prefer ascending
+                                    Some(asc)
+                                } else if first > last {
+                                    // Original data trends downward, prefer descending  
+                                    Some(desc)
+                                } else {
+                                    // Same first and last, default to ascending
+                                    Some(asc)
+                                }
+                            },
+                            _ => Some(asc) // Can't determine, default to ascending
+                        }
+                    } else {
+                        // Neither is consistent (shouldn't happen), default to ascending
+                        Some(asc)
+                    }
+                }
+            }
+        },
+        (Some(asc), None) => Some(asc),
+        (None, Some(desc)) => Some(desc),
+        (None, None) => None,
+    }
+}
+
+/// Parses a string as an integer, handling common cases like "1.0"
+fn parse_as_integer(s: &str) -> Option<i64> {
+    // Try direct integer parsing first
+    if let Ok(num) = s.parse::<i64>() {
+        return Some(num);
+    }
+    
+    // Try parsing as float and check if it's actually an integer
+    if let Ok(float_num) = s.parse::<f64>() {
+        if float_num.fract() == 0.0 && float_num >= i64::MIN as f64 && float_num <= i64::MAX as f64 {
+            return Some(float_num as i64);
+        }
+    }
+    
+    None
+}
+
+/// Detects arithmetic sequences in sorted numeric values
+fn detect_arithmetic_sequence(parsed_values: &[(i64, usize)]) -> Option<SequenceInfo> {
+    if parsed_values.len() < 2 {
+        return None;
+    }
+    
+    // Find the most common step size
+    let mut step_counts: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+    
+    for i in 1..parsed_values.len() {
+        let step = parsed_values[i].0 - parsed_values[i-1].0;
+        if step != 0 { // Skip zero steps (duplicates)
+            *step_counts.entry(step).or_insert(0) += 1;
+        }
+    }
+    
+    // Find the most common step size
+    let dominant_step = step_counts.into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(step, _)| step)?;
+    
+    // Get the actual min/max values from all values
+    let all_values: Vec<i64> = parsed_values.iter().map(|(num, _)| *num).collect();
+    let min_value = *all_values.iter().min()?;
+    let max_value = *all_values.iter().max()?;
+    
+    // For sequences, determine start/end based on step direction
+    let (start_value, end_value) = if dominant_step > 0 {
+        (min_value, max_value)
+    } else {
+        (max_value, min_value) 
+    };
+    
+    // Generate expected sequence values
+    let mut sequence_values = std::collections::HashSet::new();
+    let mut current = start_value;
+    
+    if dominant_step > 0 {
+        // Increasing sequence
+        while current <= end_value {
+            sequence_values.insert(current);
+            current += dominant_step;
+        }
+    } else {
+        // Decreasing sequence  
+        while current >= end_value {
+            sequence_values.insert(current);
+            current += dominant_step; // dominant_step is negative
+        }
+    }
+    
+    // Count how many of the input values match the expected sequence
+    let matching_count = parsed_values.iter()
+        .filter(|(num, _)| sequence_values.contains(num))
+        .count();
+    
+    // All input values must match the expected sequence pattern
+    if matching_count != parsed_values.len() {
+        return None;
+    }
+    
+    // Coverage ratio: actual values present / expected sequence length
+    // This detects gaps in sequences (values < 1.0 means there are gaps)
+    let coverage_ratio = parsed_values.len() as f64 / sequence_values.len() as f64;
+    
+    // Only consider it a sequence if at least 80% of the expected values are present
+    const MIN_COVERAGE: f64 = 0.8;
+    if coverage_ratio >= MIN_COVERAGE {
+        let sequence_type = if dominant_step > 0 { "increasing" } else { "decreasing" };
+        
+        Some(SequenceInfo {
+            start_value: start_value.to_string(),
+            end_value: end_value.to_string(),
+            step_size: dominant_step,
+            sequence_type: sequence_type.to_string(),
+            coverage_ratio,
+            total_span: sequence_values.len(),
+        })
+    } else {
+        None
+    }
+}
+
+/// Generates all values that should be in a sequence based on SequenceInfo
+fn generate_sequence_values(seq_info: &SequenceInfo) -> std::collections::HashSet<String> {
+    let mut values = std::collections::HashSet::new();
+    
+    if let (Ok(start), Ok(end)) = (seq_info.start_value.parse::<i64>(), seq_info.end_value.parse::<i64>()) {
+        let mut current = start;
+        
+        while (seq_info.step_size > 0 && current <= end) || 
+              (seq_info.step_size < 0 && current >= end) {
+            values.insert(current.to_string());
+            current += seq_info.step_size;
+        }
+    }
+    
+    values
+}
+
+/// Extracts base parameter type (e.g., "NUM_2" -> "NUM")
+fn get_base_param_type(param_type: &str) -> &str {
+    if let Some(underscore_pos) = param_type.rfind('_') {
+        if param_type[underscore_pos + 1..].chars().all(|c| c.is_ascii_digit()) {
+            &param_type[..underscore_pos]
+        } else {
+            param_type
+        }
+    } else {
+        param_type
+    }
 }

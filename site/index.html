@@ -100,14 +100,15 @@
       }
       #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; pointer-events: none; }
       .stream { position: fixed; inset: 0; width: 100%; height: 100%; padding: clamp(8px,1.2vw,14px); box-sizing: border-box; pointer-events: none; white-space: pre; overflow: hidden; opacity: var(--stream-alpha, .22); color: #d7f1ff; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: clamp(10px, 1.2vw, 13px); line-height: 1.35; text-shadow: 0 1px 0 rgba(0,0,0,0.6); will-change: filter, opacity; transition: filter 160ms ease, opacity 240ms ease; z-index: 0; }
-      .stage-overlay { position: relative; z-index: 1; height: auto; display: grid; grid-auto-rows: min-content; }
-      .stage-top { display: grid; grid-template-columns: 1fr; align-content: center; padding: clamp(1rem, 4vw, 3rem); gap: clamp(1rem,2vw,2rem); }
+      .stage-overlay { position: relative; z-index: 1; height: auto; display: grid; grid-template-rows: auto auto; gap: 0; }
+      .stage-top { display: grid; grid-template-columns: 1fr; align-content: center; padding: clamp(1rem, 4vw, 3rem); padding-bottom: clamp(0.5rem, 1vw, 1rem); gap: clamp(1rem,2vw,2rem); }
       @media (min-width: 680px) {
         .stage-top { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); align-items: start; }
         .stage-left { grid-column: 1; }
         .stage-insights { grid-column: 2; }
       }
       .stage-left { display: grid; gap: 1.25rem; align-content: start; }
+      .stage-story { padding: clamp(1rem, 4vw, 3rem); padding-top: 0; }
       .brandline { display:flex; align-items:center; gap:.8rem; color: var(--dim); }
       .brandmark { font-family: "Space Grotesk", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-weight: 700; letter-spacing: -0.01em; }
       .brandmark.big { font-size: clamp(1.8rem, 2vw + 1.6rem, 2.8rem); letter-spacing: -0.01em; }
@@ -154,12 +155,12 @@
       .hero-right { display: grid; grid-auto-rows: min-content; gap: .8rem; }
       .hero-right .hero-demo { opacity: var(--demo-alpha, 1); transition: opacity 200ms ease, filter 160ms ease; }
 
-      .stage-insights, .hero-insights { display: grid; grid-template-rows: auto 1fr; gap: .8rem; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0)), radial-gradient(130% 100% at 0% -10%, rgba(124,245,198,0.10), transparent 55%), var(--elev); box-shadow: var(--shadow-hard); min-height: 220px; }
+      .stage-insights, .hero-insights { display: grid; grid-template-rows: auto 1fr; gap: .8rem; box-shadow: var(--shadow-hard); min-height: 220px; }
       .hero-insights { padding: clamp(0.6rem, 1.4vw, 1.2rem); }
       .stage-insights { padding: 0; align-self: start; }
       .stage-insights .logbox { font-size: 11.5px; line-height: 1.4; padding: 0.7rem 0.8rem; }
       @media (min-width: 1320px) { .stage-insights .logbox { font-size: 12px; } }
-      .stage-insights { opacity: var(--insight-alpha, 0); transition: opacity 240ms ease; }
+      .stage-insights { /* opacity: var(--insight-alpha, 0); */ transition: opacity 240ms ease; }
 
       /* Hero split */
       .hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: var(--grid-gap); align-items: stretch; margin-top: 1.2rem; }
@@ -219,7 +220,10 @@
         line-height: 1.15;
         font-variant-caps: all-small-caps;
       }
-      .story { display: grid; gap: 1rem; margin-top: .8rem; max-width: 64ch; }
+      .story { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 4rem); margin-top: .8rem; max-width: none; }
+      @media (max-width: 768px) {
+        .story { grid-template-columns: 1fr; gap: 1rem; }
+      }
       .story p {
         margin: 0;
         color: color-mix(in oklab, var(--text) 78%, var(--muted));
@@ -337,43 +341,50 @@
           <div class="stage-left">
             <div class="brandline">
               <span class="brandmark big">Logoscope</span>
+              <a class="btn btn-outline github-btn" href="https://github.com/probelabs/logoscope" target="_blank" rel="noopener" aria-label="View on GitHub" style="font-size: var(--step--1); padding: 0.5rem 0.75rem; margin-left: 1.5rem;">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.38 0 12c0 5.3 3.44 9.79 8.2 11.39.6.1.8-.26.8-.58v-2.24c-3.34.73-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.72.08-.72 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.1-.77.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.53-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.65 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.19.7.8.58C20.56 21.8 24 17.3 24 12 24 5.38 18.63 0 12 0z"/></svg>
+                View on GitHub
+              </a>
             </div>
             <div class="titleblock">
               <h1 class="xdisplay" id="labTitle">Noise → Narrative</h1>
-              <p class="lede">Logs are how systems talk, but at scale they drown signal in repetition. We turn that noise into a language both humans and AI can reason about.</p>
+              <p class="lede">Gigabytes of logs → kilobytes of AI-ready insights.<br>Pattern and anomaly log extraction for AI and humans.</p>
               <div class="cli-quickstart">
               <div class="cli-card">
+                <div class="cli-title">AI quick start</div>
+                <p style="color: var(--muted); margin-bottom: 1rem; font-size: var(--step--1);">Connect Logoscope to Claude Desktop and analyze logs with natural language.</p>
+<pre class="cli"><span class="prompt">$</span> claude mcp add logoscope -- npx -y @probelabs/logoscope@latest mcp</pre>
+                <p style="color: var(--dim); margin: 0.8rem 0; font-size: var(--step--1);">Or manually add to <code>~/.claude/mcp.json</code> 
+                  <a href="#" id="jsonConfigLink" style="color: var(--accent); text-decoration: none; margin-left: 0.5rem;">(JSON config)</a>:</p>
+<pre class="cli" id="mcpConfig" style="display: none;">{
+  "mcpServers": {
+    "logoscope": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@probelabs/logoscope@latest", "mcp"]
+    }
+  }
+}</pre>
+                <p style="color: var(--dim); margin: 0.8rem 0; font-size: var(--step--1);">Then ask Claude:</p>
+<pre class="cli" style="background: #0a1a0f; border-color: #2a4a2f;"><span style="color: var(--accent);">"Analyze these logs: /var/log/app.log"</span></pre>
+                <small class="cli-note">Claude will automatically use fast triage analysis first, then deep analysis if needed.</small>
+              </div>
+              
+              <div class="cli-card">
                 <div class="cli-title">CLI quick start</div>
-<pre class="cli"><span class="prompt">$</span> npm i @probelabs/logoscope
-<span class="prompt">$</span> logoscope logs/app-*.log logs/auth-*.log</pre>
-<pre class="cli"><span class="prompt">$</span> kubectl logs -n prod deploy/web -f --since=30m | logoscope --out insights.json
-<span class="prompt">$</span> journalctl -u api -o json | logoscope --out insights.json</pre>
-                <small class="cli-note">Accepts multiple files and globs, or reads from standard input (auto‑detected). Outputs to stdout by default; use <code>--out file.json</code> to save.</small>
+                <p style="color: var(--muted); margin-bottom: 1rem; font-size: var(--step--1);">Two-step workflow: start with <code>--triage</code> for fast insights, then deep analysis.</p>
+<pre class="cli"><span class="prompt">$</span> # Step 1: Quick triage (fast anomaly detection)
+<span class="prompt">$</span> npx -y @probelabs/logoscope@latest --triage logs/app-*.log</pre>
+<pre class="cli"><span class="prompt">$</span> # Step 2: Full analysis (if anomalies found)
+<span class="prompt">$</span> npx -y @probelabs/logoscope@latest logs/app-*.log --out insights.json</pre>
+<pre class="cli"><span class="prompt">$</span> # Streaming logs
+<span class="prompt">$</span> kubectl logs -n prod deploy/web --since=30m | npx -y @probelabs/logoscope@latest --triage
+<span class="prompt">$</span> journalctl -u api -o json | npx -y @probelabs/logoscope@latest --out insights.json</pre>
+                <small class="cli-note">Use <code>--triage</code> first for fast results, then run without it for comprehensive analysis. Accepts multiple files, globs, or standard input.</small>
               </div>
-              <a class="btn btn-outline github-btn" href="https://github.com/probelabs/logoscope" target="_blank" rel="noopener" aria-label="View on GitHub">
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.38 0 12c0 5.3 3.44 9.79 8.2 11.39.6.1.8-.26.8-.58v-2.24c-3.34.73-4.03-1.42-4.03-1.42-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.72.08-.72 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49.99.1-.77.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.53-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.65 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.19.7.8.58C20.56 21.8 24 17.3 24 12 24 5.38 18.63 0 12 0z"/></svg>
-                View on GitHub
-              </a>
               </div>
-              </div>
-              <div class="story">
-                <p class="eyebrow">For Support & On‑Call</p>
-                <p>You open a ticket: payments failing, dashboards flashing red. The log dump is <strong>hundreds of megabytes</strong>. Search helps a little, but bursts hide in the scroll; schema shifts slip by; copying chunks into AI is a dead end.</p>
-
-                <p class="eyebrow">The Constraint</p>
-                <p>Large logs exceed <strong>AI context windows</strong>; repetition wastes tokens; time‑based anomalies don’t survive copy‑paste. You need structure, not more lines.</p>
-
-                <p class="eyebrow">What Logoscope Does</p>
-                <p>We compress logs into a <strong>pattern language</strong>: flatten JSON, mask ids, cluster recurring shapes, and track time as a rhythm of <strong>bursts and gaps</strong>. We surface <strong>new/rare patterns</strong> and <strong>frequency spikes</strong>, and keep a reversible trail back to raw lines.</p>
-
-                <p class="eyebrow">Why It Matters</p>
-                <p>The result is <strong>AI‑ready JSON</strong> that actually fits into context windows — summaries, top templates, and anomalies — so agents can answer real questions and you can jump to evidence fast.</p>
-
-                <p class="eyebrow">Ask It</p>
-                <p>“Which errors spiked between 14:20–14:25?” • “Did a field appear before failures?” • “Show examples with 3 lines of context.”</p>
               </div>
             </div>
-          </div>
           <div class="stage-insights" id="insights">
             <div class="logbox" id="insightsBox" style="min-height: 220px;" role="region" aria-label="Insights output">
               <pre class="code">{</pre>
@@ -387,13 +398,6 @@
         "value": 127,
         "baseline": 18
       },
-      {
-        "type": "FrequencySpike",
-        "template": "429 Too Many Requests from &lt;IP&gt;",
-        "at": "2025-09-05T14:21:00Z",
-        "value": 82,
-        "baseline": 15
-      }
     ],
     "pattern_anomalies": [
       {
@@ -427,14 +431,6 @@
       "examples": ["INFO user=9214 op=login ip=10.5.22.18"]
     },
     {
-      "template": "WARN retry=&lt;*&gt; exceeded for op=&lt;*&gt;",
-      "frequency": 0.0041,
-      "total_count": 2050,
-      "severity": "WARN",
-      "temporal": { "bursts": 1, "largest_burst": "2025-09-05T14:21:00Z", "trend": "increasing" },
-      "examples": ["WARN retry=3 exceeded for op=fetchProfile"]
-    },
-    {
       "template": "level=info op=logout user_id=&lt;*&gt; status=&lt;*&gt;",
       "frequency": 0.0875,
       "total_count": 43750,
@@ -444,6 +440,24 @@
     }
   ]</pre>
               <pre class="code">}</pre>
+            </div>
+          </div>
+        </div>
+        <div class="stage-story">
+          <div class="story">
+            <div>
+              <p class="eyebrow">The Problem</p>
+              <p>Production is down. Your logs are <strong>gigabytes of noise</strong>: thousands of identical lines, buried anomalies, and patterns too complex for grep. Uploading to AI fails — context windows overflow, tokens waste on repetition, and temporal patterns vanish in copy-paste.</p>
+
+              <p class="eyebrow">How It Works</p>
+              <p>Logoscope uses the <strong>Drain algorithm</strong> to extract log templates, replacing variables with wildcards. We identify <strong>anomalies</strong> (new patterns, frequency spikes, numeric outliers), track <strong>temporal dynamics</strong> (bursts, gaps, trends), and compress millions of lines into <strong>kilobytes of structured JSON</strong>.</p>
+            </div>
+            <div>
+              <p class="eyebrow">What You Get</p>
+              <p>A <strong>complete analysis</strong> that fits in AI context: pattern statistics with severity and trends, temporal anomalies with exact timestamps, schema changes and field evolution, plus queryable access to raw logs. Use <strong>--triage</strong> for rapid anomaly detection, then deep-dive when needed.</p>
+
+              <p class="eyebrow">Real Questions, Real Answers</p>
+              <p>"What spiked at 14:20?" • "Show new error patterns from today" • "Which fields changed before the outage?" • "Extract payment failures with context" — <strong>Logoscope makes logs answerable</strong>.</p>
             </div>
           </div>
         </div>
@@ -462,7 +476,7 @@
           <div class="probe-info">
             <div class="probe-info-row">
             <p>
-              Logoscope is part of Probe’s vision: tools that help humans and AI work together on real‑world systems.
+              Logoscope is part of Probe's vision: tools that help humans and AI work together on real‑world systems.
               Where Probe gives AI the right context, Logoscope distills massive logs into compact, queryable insight—
               patterns, bursts, and anomalies that actually fit into AI context windows while preserving a link back to raw evidence.
             </p>
@@ -477,9 +491,10 @@
     <footer class="site-footer">
       <div class="wrap" style="padding-top: 0; padding-bottom: var(--pad);">
         <div style="display:flex; flex-wrap:wrap; gap:.8rem; align-items:center; justify-content: space-between; padding-top: 1rem;">
-          <div style="color: var(--dim); font-size: var(--step--1);">© 2025 Logoscope by <a href="https://probelabs.com" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; text-underline-offset: 2px;">Probelabs</a> — Built for debugging at scale.</div>
+          <div style="color: var(--dim); font-size: var(--step--1);">
+            © 2025 Logoscope by <a href="https://probelabs.com" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline; text-underline-offset: 2px;">Probelabs</a> — Built for debugging at scale.
+          </div>
           <div style="display:flex; gap:.8rem;">
-            <a href="https://github.com/probelabs/logoscope" target="_blank" rel="noopener" class="pill">GitHub</a>
             <a href="#" class="pill">Docs</a>
           </div>
         </div>
@@ -528,6 +543,23 @@
         setEntropy(entropyInput.value);
       } else {
         setEntropy(100);
+      }
+
+      // JSON config toggle functionality
+      const jsonConfigLink = document.getElementById('jsonConfigLink');
+      const mcpConfig = document.getElementById('mcpConfig');
+      
+      if (jsonConfigLink && mcpConfig) {
+        jsonConfigLink.addEventListener('click', function(e) {
+          e.preventDefault();
+          if (mcpConfig.style.display === 'none' || mcpConfig.style.display === '') {
+            mcpConfig.style.display = 'block';
+            jsonConfigLink.textContent = '(hide config)';
+          } else {
+            mcpConfig.style.display = 'none';
+            jsonConfigLink.textContent = '(JSON config)';
+          }
+        });
       }
 
       // Remove particle noise rendering; keep only streaming logs background
@@ -948,24 +980,6 @@
       const section = document.createElement('section');
       section.className = 'hero-copy';
       section.style.marginTop = '1.4rem';
-      section.innerHTML = `
-        <h2>MCP Integration</h2>
-        <p class="lede">Integrate Logoscope with MCP‑compatible editors and agents.</p>
-        <pre style="background:#0b0c10;border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow:auto"><code>logoscope mcp</code></pre>
-        <small>Add to Claude Desktop ~/.claude/mcp.json:
-        <pre style="background:#0b0c10;border:1px solid var(--line);border-radius:8px;padding:.8rem;overflow:auto"><code>{
-  "mcpServers": {
-    "logoscope": {
-      "type": "stdio",
-      "command": "logoscope",
-      "args": ["mcp"],
-      "env": {}
-    }
-  }
-}</code></pre>
-        </small>
-      `;
-      wrap?.appendChild(section);
     } catch {}
   })();
     </script>

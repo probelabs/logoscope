@@ -2,9 +2,11 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static RE_TIMESTAMP: Lazy<Regex> = Lazy::new(|| {
-    // ISO8601/RFC3339 with optional fractional seconds and timezone (Z or ±HH:MM or ±HHMM)
-    // Examples: 2025-08-07T06:41:18Z, 2025-08-07T06:41:18+01:00, 2025-08-07 06:41:18-0700
-    Regex::new(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b").unwrap()
+    // Enhanced ISO8601/RFC3339 with comprehensive timezone and fractional second support
+    // Supports: 2025-08-07T06:41:18Z, 2025-08-07T06:41:18.123456+01:00, 2025-08-07 06:41:18.999-0800
+    // Fractional seconds: 1-9 digits (.1 to .123456789)  
+    // Timezones: Z, ±HH:MM, ±HHMM, ±HH
+    Regex::new(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:\d{2}(?::?\d{2})?|\d{4}))\b").unwrap()
 });
 
 // Numbers with common unit suffixes (duration/size/percent). Preserve suffix.

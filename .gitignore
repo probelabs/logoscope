@@ -1,3 +1,22 @@
 # Vow - AI accountability files
 .vow-challenge
 .vow-consent
+
+# Rust build artifacts
+/logoscope/target/
+/logoscope/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Local settings
+.claude/settings.local.json

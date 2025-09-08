@@ -66,3 +66,56 @@ jobs:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm-publish:
+    name: Publish @logoscope/cli to npm
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update package.json version from tag
+        working-directory: npm
+        run: |
+          # Extract version from tag (remove 'v' prefix)
+          TAG_NAME="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}"
+          VERSION="${TAG_NAME#v}"
+          echo "Tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          
+          # Update package.json with the version from tag
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          
+          # Verify the update
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "Updated package.json version: $PKG_VERSION"
+          
+          if [[ "$PKG_VERSION" != "$VERSION" ]]; then
+            echo "Failed to update package.json version" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        working-directory: npm
+        run: npm install --no-audit --no-fund
+
+      - name: Publish to npm
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public

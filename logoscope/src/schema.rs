@@ -33,7 +33,7 @@ fn flatten_types(prefix: &str, v: &Value, out: &mut Fingerprint) {
                 let key = if prefix.is_empty() {
                     k.clone()
                 } else {
-                    format!("{}.{}", prefix, k)
+                    format!("{prefix}.{k}")
                 };
                 flatten_types(&key, v, out);
             }
@@ -43,7 +43,7 @@ fn flatten_types(prefix: &str, v: &Value, out: &mut Fingerprint) {
                 let key = if prefix.is_empty() {
                     idx.to_string()
                 } else {
-                    format!("{}.{}", prefix, idx)
+                    format!("{prefix}.{idx}")
                 };
                 flatten_types(&key, item, out);
             }

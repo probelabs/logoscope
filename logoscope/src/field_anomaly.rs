@@ -1,6 +1,24 @@
 use crate::{masking, parser};
 use std::collections::{HashMap, HashSet};
 
+/// Check if a field should be excluded from anomaly detection
+/// Excludes timestamp-like fields and nanosecond fields
+fn should_exclude_from_anomaly_detection(field_name: &str) -> bool {
+    let name_lower = field_name.to_lowercase();
+    // Time/timestamp fields
+    if name_lower == "time" || name_lower == "timestamp" || name_lower == "ts" || 
+       name_lower == "datetime" || name_lower == "date" || name_lower.ends_with("_time") ||
+       name_lower.ends_with("_ts") || name_lower.contains("timestamp") {
+        return true;
+    }
+    // Nanosecond fields
+    if name_lower == "ns" || name_lower == "nanos" || name_lower == "nanoseconds" || 
+       name_lower.ends_with("_ns") || name_lower.ends_with("_nanos") {
+        return true;
+    }
+    false
+}
+
 #[derive(Debug, Clone)]
 pub struct NumericOutlier {
     pub template: String,
@@ -38,6 +56,10 @@ pub fn analyze_numeric_outliers(lines: &[&str], z_threshold: f64) -> Vec<Numeric
         templates.push(template.clone());
         if let Some(fields) = rec.flat_fields {
             for (k, v) in fields.iter() {
+                // Skip timestamp and nanosecond fields
+                if should_exclude_from_anomaly_detection(k) {
+                    continue;
+                }
                 if let Some(num) = parse_number(v) {
                     values.entry((template.clone(), k.clone())).or_default().push((i, num));
                 }
@@ -81,6 +103,10 @@ pub fn analyze_categorical_explosions(
         let template = to_generic_template(&masked);
         if let Some(fields) = rec.flat_fields {
             for (k, v) in fields.iter() {
+                // Skip timestamp and nanosecond fields
+                if should_exclude_from_anomaly_detection(k) {
+                    continue;
+                }
                 // Only categorical: strings that are not numbers
                 if parse_number(v).is_none() {
                     sets.entry((template.clone(), k.clone())).or_default().insert(v.clone());

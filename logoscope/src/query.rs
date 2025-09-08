@@ -46,7 +46,7 @@ impl QueryIndex {
         };
         let masked = masking::mask_text(&base);
         let clusters = patterns::cluster_masked(&[masked.clone()]);
-        let template = clusters.get(0).map(|c| c.template.clone()).unwrap_or(masked);
+        let template = clusters.first().map(|c| c.template.clone()).unwrap_or(masked);
         let (service, host) = extract_source(&rec, line);
         self.entries.push(Entry { id, line: line.to_string(), timestamp: rec.timestamp, template, service, host });
         id

@@ -17,3 +17,11 @@ anyhow = "1"
 ctrlc = "3"
 rayon = "1.10"
 num_cpus = "1.16"
+grok = "1.2"
+lru = "0.12"
+ahash = "0.8"
+
+[[bin]]
+name = "benchmark_smart_masking"
+path = "src/bin/benchmark_smart_masking.rs"
+

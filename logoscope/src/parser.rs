@@ -44,14 +44,24 @@ pub fn parse_line_with_hints(line: &str, line_number: usize, time_keys: &[&str])
                 }
             }
 
+            // Build synthetic message from sorted flat fields
+            let synthetic_message = if !flat.is_empty() {
+                let mut parts: Vec<String> = flat.iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect();
+                parts.sort();
+                Some(parts.join(" "))
+            } else {
+                None
+            };
+
             ParsedRecord {
                 format: LogFormat::Json,
                 line_number,
                 message,
                 timestamp: ts,
                 flat_fields: Some(flat),
-                // Build synthetic message lazily where needed (query path)
-                synthetic_message: None,
+                synthetic_message,
                 raw_json: Some(v),
             }
         }
@@ -78,7 +88,7 @@ fn flatten_json(prefix: &str, v: &Value, out: &mut BTreeMap<String, String>) {
                 let key = if prefix.is_empty() {
                     k.clone()
                 } else {
-                    format!("{}.{}", prefix, k)
+                    format!("{prefix}.{k}")
                 };
                 flatten_json(&key, v, out);
             }
@@ -88,7 +98,7 @@ fn flatten_json(prefix: &str, v: &Value, out: &mut BTreeMap<String, String>) {
                 let key = if prefix.is_empty() {
                     idx.to_string()
                 } else {
-                    format!("{}.{}", prefix, idx)
+                    format!("{prefix}.{idx}")
                 };
                 flatten_json(&key, item, out);
             }
@@ -150,26 +160,70 @@ fn epoch_secs_to_dt(sec: i64) -> Option<DateTime<Utc>> {
 }
 fn epoch_millis_to_dt(ms: i64) -> Option<DateTime<Utc>> {
     let secs = (ms / 1000) as u64;
-    let nsub = ((ms % 1000).abs() as u32) * 1_000_000;
-    DateTime::<Utc>::from_timestamp(secs as i64, nsub)
+    let nsub = (ms % 1000).unsigned_abs() * 1_000_000;
+    DateTime::<Utc>::from_timestamp(secs as i64, nsub as u32)
 }
 fn epoch_micros_to_dt(us: i64) -> Option<DateTime<Utc>> {
-    let secs = (us / 1_000_000) as i64;
-    let nsub = ((us % 1_000_000).abs() as u32) * 1_000;
-    DateTime::<Utc>::from_timestamp(secs, nsub)
+    let secs = us / 1_000_000;
+    let nsub = (us % 1_000_000).unsigned_abs() * 1_000;
+    DateTime::<Utc>::from_timestamp(secs, nsub as u32)
 }
 
 pub fn detect_timestamp_in_text(s: &str) -> Option<DateTime<Utc>> {
-    // Try ISO8601/RFC3339 substring with optional timezone or Z
+    // Try ISO8601/RFC3339 substring with enhanced timezone and fractional support
     static RE_ISO_ANY: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
-        regex::Regex::new(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b").unwrap()
+        // Enhanced ISO8601/RFC3339 with comprehensive timezone and fractional second support
+        // Supports: 2025-08-07T06:41:18Z, 2025-08-07T06:41:18.123456+01:00, 2025-08-07 06:41:18.999-0800
+        // Fractional seconds: 1-9 digits (.1 to .123456789)  
+        // Timezones: Z, ±HH:MM, ±HHMM, ±HH
+        regex::Regex::new(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:\d{2}(?::?\d{2})?|\d{4}))\b").unwrap()
     });
     if let Some(m) = RE_ISO_ANY.find(s) {
         let mstr = m.as_str();
+        
+        // Try strict RFC3339 first
         if let Ok(dt) = DateTime::parse_from_rfc3339(mstr) {
             return Some(dt.with_timezone(&Utc));
         }
-        // Try naive as UTC
+        
+        // Try enhanced parsing with various timezone formats
+        // Convert HHMM timezone format to HH:MM for RFC3339 compatibility
+        let normalized_str = if mstr.contains('+') || mstr.contains('-') {
+            // Find timezone part and normalize it
+            let mut normalized = mstr.to_string();
+            // Convert -0800 to -08:00 and +0530 to +05:30, etc.
+            if let Some(tz_match) = regex::Regex::new(r"([+-])(\d{2})(\d{2})$").unwrap().captures(mstr) {
+                if tz_match.get(0).unwrap().as_str().len() == 5 { // Only 4-digit timezones like +0800
+                    let sign = &tz_match[1];
+                    let hours = &tz_match[2]; 
+                    let minutes = &tz_match[3];
+                    let new_tz = format!("{sign}{hours}:{minutes}");
+                    normalized = normalized.replace(tz_match.get(0).unwrap().as_str(), &new_tz);
+                    
+                    if let Ok(dt) = DateTime::parse_from_rfc3339(&normalized) {
+                        return Some(dt.with_timezone(&Utc));
+                    }
+                }
+            }
+            normalized
+        } else {
+            mstr.to_string()
+        };
+        
+        // Try various explicit timezone-aware formats
+        if let Ok(dt) = DateTime::parse_from_str(&normalized_str, "%Y-%m-%d %H:%M:%S%.f%z")
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%d %H:%M:%S%z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%dT%H:%M:%S%.f%z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%dT%H:%M:%S%z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%d %H:%M:%S%.f%:z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%d %H:%M:%S%:z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%dT%H:%M:%S%.f%:z"))
+            .or_else(|_| DateTime::parse_from_str(&normalized_str, "%Y-%m-%dT%H:%M:%S%:z"))
+        {
+            return Some(dt.with_timezone(&Utc));
+        }
+        
+        // Try naive as UTC for timestamps without timezone
         if let Ok(ndt) = NaiveDateTime::parse_from_str(mstr, "%Y-%m-%d %H:%M:%S")
             .or_else(|_| NaiveDateTime::parse_from_str(mstr, "%Y-%m-%d %H:%M:%S%.f"))
             .or_else(|_| NaiveDateTime::parse_from_str(mstr, "%Y-%m-%dT%H:%M:%S"))
