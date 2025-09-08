@@ -15,7 +15,7 @@ fn init_parallelism() {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "logoscope", version, about = "AI-optimized log analysis", arg_required_else_help = true)]
+#[command(name = "logoscope", version, about = "AI-optimized log analysis")]
 struct Cli {
     /// Input files (`-` for stdin). May be repeated.
     #[arg(required = false)]
@@ -40,6 +40,13 @@ struct Cli {
     #[arg(long = "no-correlations", default_value_t = false)] no_correlations: bool,
     #[arg(long = "no-temporal", default_value_t = false)] no_temporal: bool,
     #[arg(long = "max-patterns")] max_patterns: Option<usize>,
+    #[arg(long = "analyze-spikes", default_value_t = false)] analyze_spikes: bool,
+    /// Verbose mode: reorder patterns by importance (errors > warnings > info > debug)
+    #[arg(long = "verbose", short = 'v', default_value_t = false)] verbose: bool,
+    /// Triage mode: show only critical patterns and anomalies for rapid problem identification
+    #[arg(long = "triage", short = 't', default_value_t = false)] triage: bool,
+    /// Deep investigation mode: maximum detail for thorough analysis (all patterns, 10 examples, full stats, temporal analysis)
+    #[arg(long = "deep", short = 'd', default_value_t = false)] deep: bool,
 
     // Logs view flags (when --only logs)
     #[arg(long = "start")] start: Option<String>,
@@ -65,25 +72,19 @@ struct Cli {
     #[arg(long = "group-by", default_value = "none")] group_by: String,
     /// Sort patterns by: count | freq | bursts | confidence (desc)
     #[arg(long = "sort", default_value = "count")] sort_by: String,
-
-    /// Use Drain algorithm for template clustering
-    #[arg(long = "drain", default_value_t = false)]
-    drain: bool,
+    
+    /// Enable chunked processing for large files (constant memory usage)
+    #[arg(long = "chunked", action = clap::ArgAction::SetTrue)] chunked: bool,
+    /// Disable chunked processing (use all-in-memory processing)
+    #[arg(long = "no-chunked", action = clap::ArgAction::SetTrue)] no_chunked: bool,
+    /// Chunk size in MB for chunked processing
+    #[arg(long = "chunk-size", default_value_t = 16)] chunk_size_mb: usize,
 }
 
 fn read_all_lines(paths: &[String]) -> io::Result<Vec<String>> {
     let mut out = Vec::new();
     let mut agg = MultiLineAggregator::default();
-    if paths.is_empty() {
-        let stdin = io::stdin();
-        let reader = stdin.lock();
-        for line in reader.lines() {
-            let l = line?;
-            if let Some(e) = agg.push(&l) { out.push(e); }
-        }
-        if let Some(e) = agg.finish() { out.push(e); }
-        return Ok(out);
-    }
+    
     for p in paths {
         if p == "-" {
             let stdin = io::stdin();
@@ -105,18 +106,135 @@ fn read_all_lines(paths: &[String]) -> io::Result<Vec<String>> {
     Ok(out)
 }
 
+/// Stream lines in bounded chunks while preserving multiline aggregation.
+/// - `target_bytes`: flush when approx this many bytes are accumulated
+/// - `max_lines`:    additionally cap per-chunk by line count
+/// Calls `on_chunk` with a Vec<String> (owned aggregated records).
+pub fn stream_lines_in_chunks<F>(
+    paths: &[String],
+    target_bytes: usize,
+    max_lines: usize,
+    mut on_chunk: F,
+) -> io::Result<()>
+where
+    F: FnMut(Vec<String>),
+{
+    let mut buf: Vec<String> = Vec::with_capacity(max_lines.max(1024));
+    let mut buf_bytes: usize = 0;
+
+    #[inline]
+    fn flush<F>(buf: &mut Vec<String>, buf_bytes: &mut usize, on_chunk: &mut F)
+    where
+        F: FnMut(Vec<String>),
+    {
+        if !buf.is_empty() {
+            // Hand over ownership without re-allocating the buffer itself.
+            let mut new_vec = Vec::with_capacity(buf.capacity());
+            std::mem::swap(buf, &mut new_vec);
+            *buf_bytes = 0;
+            on_chunk(new_vec);
+        }
+    }
+
+    // Helper reading a single "source" (stdin or file path)
+    fn read_source<R: std::io::BufRead, Fw: FnMut(Vec<String>)>(
+        reader: R,
+        target_bytes: usize,
+        max_lines: usize,
+        buf: &mut Vec<String>,
+        buf_bytes: &mut usize,
+        on_chunk: &mut Fw,
+    ) -> io::Result<()> {
+        let mut agg = MultiLineAggregator::default();
+        for line in reader.lines() {
+            let l = line?;
+            if let Some(e) = agg.push(&l) {
+                *buf_bytes += e.len() + 1; // approximate newline
+                buf.push(e);
+                if buf.len() >= max_lines || *buf_bytes >= target_bytes {
+                    flush(buf, buf_bytes, on_chunk);
+                }
+            }
+        }
+        if let Some(e) = agg.finish() {
+            *buf_bytes += e.len() + 1;
+            buf.push(e);
+        }
+        Ok(())
+    }
+
+    if paths.is_empty() {
+        let stdin = std::io::stdin();
+        let locked = stdin.lock();
+        read_source(locked, target_bytes, max_lines, &mut buf, &mut buf_bytes, &mut on_chunk)?;
+        flush(&mut buf, &mut buf_bytes, &mut on_chunk);
+        return Ok(());
+    }
+
+    for p in paths {
+        if p == "-" {
+            let stdin = std::io::stdin();
+            let locked = stdin.lock();
+            read_source(locked, target_bytes, max_lines, &mut buf, &mut buf_bytes, &mut on_chunk)?;
+        } else {
+            let f = File::open(p)?;
+            // Larger buffer reduces syscalls on big files.
+            let r = BufReader::with_capacity(1 << 20, f);
+            read_source(r, target_bytes, max_lines, &mut buf, &mut buf_bytes, &mut on_chunk)?;
+        }
+        // Flush between files to avoid chunk mixing across files
+        flush(&mut buf, &mut buf_bytes, &mut on_chunk);
+    }
+    // Final flush (no-op if already empty)
+    flush(&mut buf, &mut buf_bytes, &mut on_chunk);
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     init_parallelism();
     let cli = Cli::parse();
-    let lines = read_all_lines(&cli.input)?;
+    
+    // Pre-compile all regex patterns to avoid first-use contention in parallel processing
+    logoscope::param_extractor::prewarm_regexes();
+    
     // Streaming mode (stdin only)
     if cli.follow {
-        run_streaming(cli.interval_secs, cli.window_secs, cli.max_lines, cli.fail_fast, cli.drain)?;
+        run_streaming(cli.interval_secs, cli.window_secs, cli.max_lines, cli.fail_fast)?;
         return Ok(());
     }
-    let refs: Vec<&str> = lines.iter().map(|s| s.as_ref()).collect();
-    // Logs-only view
+    
+    // Default to stdin if no input specified
+    let input_files = if cli.input.is_empty() {
+        vec!["-".to_string()]
+    } else {
+        cli.input.clone()
+    };
+    
+    // Determine processing mode
+    // Auto-select based on file size: use non-chunked for files < 50MB total
+    const AUTO_CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
+    
+    let use_chunked = if cli.no_chunked { 
+        false 
+    } else if cli.chunked {
+        true
+    } else {
+        // Auto-detect based on total file size
+        let total_size = input_files.iter()
+            .filter(|p| *p != "-")
+            .filter_map(|p| std::fs::metadata(p).ok())
+            .map(|m| m.len())
+            .sum::<u64>();
+        
+        // If stdin or total size > threshold, use chunked mode
+        input_files.contains(&"-".to_string()) || total_size > AUTO_CHUNKED_THRESHOLD
+    };
+    let chunk_size_bytes = cli.chunk_size_mb * 1024 * 1024;
+    const MAX_LINES_PER_CHUNK: usize = 50_000;
+    
+    // For logs-only view, we need all lines in memory regardless of chunked mode
     if matches!(cli.only.as_deref(), Some("logs")) {
+        let lines = read_all_lines(&input_files)?;
         let mut idx = logoscope::query::QueryIndex::new();
         for l in &lines { let _ = idx.push_line(l); }
         let mut results: Vec<&logoscope::query::Entry> = Vec::new();
@@ -144,13 +262,42 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Full or patterns-only summary
-    let opts = logoscope::ai::SummarizeOpts { use_drain: cli.drain };
-    let out = if cli.time_key.is_empty() {
-        logoscope::ai::summarize_lines_with_opts(&refs, &[], None, &opts)
-    } else {
-        let keys: Vec<&str> = cli.time_key.iter().map(|s| s.as_str()).collect();
-        logoscope::ai::summarize_lines_with_opts(&refs, &keys, None, &opts)
+    let opts = logoscope::ai::SummarizeOpts {
+        analyze_spikes: cli.analyze_spikes,
+        verbose: cli.verbose,
+        triage: cli.triage,
+        deep: cli.deep,
+        ..Default::default()
     };
+    
+    let out = if use_chunked {
+        // Chunked processing for constant memory usage
+        let mut engine = logoscope::ai::StreamingSummarizer::new();
+        let time_keys: Vec<&str> = cli.time_key.iter().map(|s| s.as_str()).collect();
+        
+        stream_lines_in_chunks(&input_files, chunk_size_bytes, MAX_LINES_PER_CHUNK, |chunk| {
+            engine.ingest_chunk(&chunk, &time_keys, &opts);
+        })?;
+        
+        engine.finalize(None, &opts)
+    } else {
+        // Original all-in-memory processing
+        let lines = read_all_lines(&input_files)?;
+        let refs: Vec<&str> = lines.iter().map(|s| s.as_ref()).collect();
+        if cli.time_key.is_empty() {
+            logoscope::ai::summarize_lines_with_opts(&refs, &[], None, &opts)
+        } else {
+            let keys: Vec<&str> = cli.time_key.iter().map(|s| s.as_str()).collect();
+            logoscope::ai::summarize_lines_with_opts(&refs, &keys, None, &opts)
+        }
+    };
+
+    // Triage mode: output compact critical information only
+    if cli.triage {
+        let triage_output = logoscope::ai::create_triage_output(&out);
+        println!("{}", serde_json::to_string_pretty(&triage_output)?);
+        return Ok(());
+    }
 
     if matches!(cli.only.as_deref(), Some("patterns")) {
         // Filter/sort/truncate patterns
@@ -166,8 +313,12 @@ fn main() -> anyhow::Result<()> {
         // Sorting
         match cli.sort_by.as_str() {
             "freq" => pats.sort_by(|a,b| b.frequency.partial_cmp(&a.frequency).unwrap().then_with(|| b.total_count.cmp(&a.total_count))),
-            "bursts" => pats.sort_by(|a,b| b.temporal.bursts.cmp(&a.temporal.bursts).then_with(|| b.total_count.cmp(&a.total_count))),
-            "confidence" => pats.sort_by(|a,b| b.confidence.partial_cmp(&a.confidence).unwrap().then_with(|| b.total_count.cmp(&a.total_count))),
+            "bursts" => pats.sort_by(|a,b| {
+                let a_bursts = a.temporal.as_ref().map(|t| t.bursts).unwrap_or(0);
+                let b_bursts = b.temporal.as_ref().map(|t| t.bursts).unwrap_or(0);
+                b_bursts.cmp(&a_bursts).then_with(|| b.total_count.cmp(&a.total_count))
+            }),
+            "confidence" | "stability" => pats.sort_by(|a,b| b.pattern_stability.partial_cmp(&a.pattern_stability).unwrap().then_with(|| b.total_count.cmp(&a.total_count))),
             _ => pats.sort_by(|a,b| b.total_count.cmp(&a.total_count).then_with(|| b.frequency.partial_cmp(&a.frequency).unwrap())),
         }
         // Truncate
@@ -176,8 +327,10 @@ fn main() -> anyhow::Result<()> {
         // Trim subfields
         for p in &mut pats {
             if cli.no_correlations { p.correlations.clear(); }
-            if cli.no_temporal { p.temporal = logoscope::ai::TemporalOut::default(); }
-            if p.examples.len() > cli.examples { p.examples.truncate(cli.examples); }
+            if cli.no_temporal { p.temporal = None; }
+            // In deep mode, use up to 10 examples; otherwise use the CLI-specified limit
+            let max_examples = if cli.deep { 10 } else { cli.examples };
+            if p.examples.len() > max_examples { p.examples.truncate(max_examples); }
         }
         if cli.format == "table" {
             print_patterns_table(&pats, &cli.group_by);
@@ -192,7 +345,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fast: bool, use_drain: bool) -> anyhow::Result<()> {
+fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fast: bool) -> anyhow::Result<()> {
     use std::time::{Duration, Instant};
     use std::collections::{VecDeque, HashMap};
     use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
@@ -209,7 +362,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
     let mut last_counts: HashMap<String, usize> = HashMap::new();
     loop {
         if !running.load(Ordering::SeqCst) {
-            emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
+            emit_summary_with_deltas(&buf, &mut last_counts)?;
             break;
         }
         match reader.next() {
@@ -226,7 +379,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
                     buf.push_back((entry, rec.timestamp));
                     trim_buffer(&mut buf, window_secs, max_lines);
                     if last_emit.elapsed() >= Duration::from_secs(interval_secs) {
-                        emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
+                        emit_summary_with_deltas(&buf, &mut last_counts)?;
                         last_emit = Instant::now();
                     }
                 }
@@ -237,7 +390,7 @@ fn run_streaming(interval_secs: u64, window_secs: i64, max_lines: usize, fail_fa
             None => {
                 std::thread::sleep(Duration::from_millis(200));
                 if last_emit.elapsed() >= Duration::from_secs(interval_secs) {
-                    emit_summary_with_deltas(&buf, &mut last_counts, use_drain)?;
+                    emit_summary_with_deltas(&buf, &mut last_counts)?;
                     last_emit = Instant::now();
                 }
             }
@@ -257,11 +410,11 @@ fn trim_buffer(buf: &mut std::collections::VecDeque<(String, Option<DateTime<Utc
     while buf.len() > max_lines { buf.pop_front(); }
 }
 
-fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<DateTime<Utc>>)>, last_counts: &mut std::collections::HashMap<String, usize>, use_drain: bool) -> anyhow::Result<()> {
+fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<DateTime<Utc>>)>, last_counts: &mut std::collections::HashMap<String, usize>) -> anyhow::Result<()> {
     let lines: Vec<&str> = buf.iter().map(|(s, _)| s.as_str()).collect();
     // Build baseline templates from the last emitted counts (streaming semantics)
     let baseline: std::collections::HashSet<String> = last_counts.keys().cloned().collect();
-    let opts = logoscope::ai::SummarizeOpts { use_drain };
+    let opts = logoscope::ai::SummarizeOpts::default();
     let out = logoscope::ai::summarize_lines_with_opts(&lines, &[], Some(&baseline), &opts);
     // Compact status to stderr
     eprintln!("[stream] lines={} patterns={}", out.summary.total_lines, out.patterns.len());
@@ -281,9 +434,39 @@ fn emit_summary_with_deltas(buf: &std::collections::VecDeque<(String, Option<Dat
 }
 
 fn print_patterns_table(pats: &Vec<logoscope::ai::PatternOut>, group_by: &str) {
+    // Sort patterns by group first, then by count
+    let mut sorted_pats = pats.clone();
+    match group_by {
+        "level" => {
+            sorted_pats.sort_by(|a, b| {
+                let a_level = a.severity.clone().unwrap_or_else(|| "".into());
+                let b_level = b.severity.clone().unwrap_or_else(|| "".into());
+                a_level.cmp(&b_level)
+                    .then_with(|| b.total_count.cmp(&a.total_count))
+                    .then_with(|| a.template.cmp(&b.template))
+            });
+        },
+        "service" => {
+            sorted_pats.sort_by(|a, b| {
+                let a_service = a.sources.by_service.get(0).map(|c| c.name.clone()).unwrap_or_else(|| "".into());
+                let b_service = b.sources.by_service.get(0).map(|c| c.name.clone()).unwrap_or_else(|| "".into());
+                a_service.cmp(&b_service)
+                    .then_with(|| b.total_count.cmp(&a.total_count))
+                    .then_with(|| a.template.cmp(&b.template))
+            });
+        },
+        _ => {
+            // Default sorting by count desc, then template asc
+            sorted_pats.sort_by(|a, b| {
+                b.total_count.cmp(&a.total_count)
+                    .then_with(|| a.template.cmp(&b.template))
+            });
+        }
+    }
+    
     println!("{:<6} {:<8} {:<8} {:<10} {:<10} {}", "Count", "Freq", "Bursts", "Confidence", "Level", "Template");
     let mut current_group: Option<String> = None;
-    for p in pats {
+    for p in &sorted_pats {
         let group_val = match group_by {
             "level" => p.severity.clone().unwrap_or_else(|| "".into()),
             "service" => p.sources.by_service.get(0).map(|c| c.name.clone()).unwrap_or_else(|| "".into()),
@@ -295,6 +478,6 @@ fn print_patterns_table(pats: &Vec<logoscope::ai::PatternOut>, group_by: &str) {
             println!("{:<6} {:<8} {:<8} {:<10} {:<10} {}", "Count", "Freq", "Bursts", "Confidence", "Level", "Template");
         }
         println!("{:<6} {:<8.4} {:<8} {:<10.3} {:<10} {}",
-            p.total_count, p.frequency, p.temporal.bursts, p.confidence, p.severity.clone().unwrap_or_else(|| "".into()), p.template);
+            p.total_count, p.frequency, p.temporal.as_ref().map(|t| t.bursts).unwrap_or(0), p.pattern_stability, p.severity.clone().unwrap_or_else(|| "".into()), p.template);
     }
 }
