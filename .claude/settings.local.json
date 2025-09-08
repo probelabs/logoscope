@@ -1,4 +1,12 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npx -y @probelabs/vow@latest:*)",
+      "Bash(npx -y @probelabs/vow@latest consent:*)",
+      "Bash(npx -y @probelabs/vow@latest rules:*)",
+      "mcp__code-search__search_code"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -20,13 +28,6 @@
           }
         ]
       }
-    ]
-  },
-  "permissions": {
-    "allow": [
-      "Bash(npx -y @probelabs/vow@latest:*)",
-      "Bash(npx -y @probelabs/vow@latest consent:*)",
-      "Bash(npx -y @probelabs/vow@latest rules:*)"
     ]
   }
 }

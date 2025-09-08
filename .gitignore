@@ -1,12 +1,28 @@
 # Vow - AI accountability files
 .vow-challenge
 .vow-consent
+.vow-cooldown
 
 # Rust build artifacts
 /logoscope/target/
 /logoscope/Cargo.lock
 **/*.rs.bk
 *.pdb
+
+# Test artifacts and outputs
+/logoscope/test_*.json
+/logoscope/test_*.log
+/logoscope/test_*.txt
+/logoscope/test_*.rs
+/logoscope/debug_*
+/logoscope/*_output.json
+/logoscope/*_double.json
+/logoscope/out.js
+/logoscope/*.log
+/logoscope/logs*.json
+/logoscope/comparison_logs.json
+/debug_test
+/comparison_logs.json
 
 # IDE files
 .idea/

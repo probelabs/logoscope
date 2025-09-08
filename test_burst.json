@@ -1,0 +1,16 @@
+{"level":"info","time":"2024-01-15T10:00:00Z","msg":"Normal operation","status":"ok"}
+{"level":"info","time":"2024-01-15T10:00:30Z","msg":"Normal operation","status":"ok"}
+{"level":"info","time":"2024-01-15T10:01:00Z","msg":"Normal operation","status":"ok"}
+{"level":"error","time":"2024-01-15T10:02:00Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:01Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:02Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:03Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:04Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:05Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:06Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:07Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:08Z","msg":"Database error","error":"connection timeout"}
+{"level":"error","time":"2024-01-15T10:02:09Z","msg":"Database error","error":"connection timeout"}
+{"level":"info","time":"2024-01-15T10:03:00Z","msg":"Normal operation","status":"ok"}
+{"level":"info","time":"2024-01-15T10:03:30Z","msg":"Normal operation","status":"ok"}
+{"level":"info","time":"2024-01-15T10:04:00Z","msg":"Normal operation","status":"ok"}

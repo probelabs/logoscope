@@ -1,0 +1,19 @@
+{"level":"debug","time":"2024-01-15T10:00:00Z","msg":"API request","api_id":"api_123","api_name":"users","org_id":"679886871ad33a00012ee3a9","mw":"auth","ns":"100"}
+{"level":"debug","time":"2024-01-15T10:00:01Z","msg":"API request","api_id":"api_123","api_name":"users","org_id":"679886871ad33a00012ee3a9","mw":"auth","ns":"200"}
+{"level":"debug","time":"2024-01-15T10:00:02Z","msg":"API request","api_id":"api_123","api_name":"users","org_id":"679886871ad33a00012ee3a9","mw":"auth","ns":"150"}
+{"level":"debug","time":"2024-01-15T10:00:03Z","msg":"API request","api_id":"api_123","api_name":"users","org_id":"679886871ad33a00012ee3a9","mw":"auth","ns":"175"}
+{"level":"debug","time":"2024-01-15T10:00:04Z","msg":"API request","api_id":"api_123","api_name":"users","org_id":"679886871ad33a00012ee3a9","mw":"auth","ns":"225"}
+{"level":"error","time":"2024-01-15T10:00:05Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:06Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:07Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:08Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:09Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:10Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:11Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:12Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:13Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:14Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"error","time":"2024-01-15T10:00:15Z","msg":"Database connection failed","service":"db","host":"192.168.1.100","error":"timeout"}
+{"level":"warn","time":"2024-01-15T10:01:00Z","msg":"High memory usage","service":"api","memory_mb":"1850"}
+{"level":"warn","time":"2024-01-15T10:01:30Z","msg":"High memory usage","service":"api","memory_mb":"1920"}
+{"level":"warn","time":"2024-01-15T10:02:00Z","msg":"High memory usage","service":"api","memory_mb":"2100"}

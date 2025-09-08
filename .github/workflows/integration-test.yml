@@ -1,0 +1,60 @@
+name: Integration Tests (npm + CLI)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  npm-cli-test:
+    name: Test npm installation on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [20]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build Rust binary (debug)
+        run: cargo build --manifest-path logoscope/Cargo.toml
+      - name: Prepare npm package with local binary
+        shell: bash
+        run: |
+          mkdir -p npm/bin
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp logoscope/target/debug/logoscope.exe npm/bin/logoscope.exe
+          else
+            cp logoscope/target/debug/logoscope npm/bin/logoscope
+            chmod +x npm/bin/logoscope
+          fi
+          cd npm && npm install
+      - name: Install Logoscope locally
+        run: cd npm && npm install -g .
+      - name: Verify Logoscope installation
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            where logoscope || echo "not found"
+          else
+            which logoscope || echo "not found"
+          fi
+          logoscope --help || true
+      - name: Smoke run (patterns JSON)
+        shell: bash
+        run: |
+          echo '{"level":"info","time":"2024-01-01T00:00:00Z","msg":"ok"}' > sample.ndjson
+          logoscope sample.ndjson > summary.json
+          cat summary.json | head -50
+          grep -q '"patterns"' summary.json
+

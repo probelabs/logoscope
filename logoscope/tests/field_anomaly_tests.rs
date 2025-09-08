@@ -18,7 +18,7 @@ fn detects_numeric_outlier_with_median_mad() {
 fn detects_categorical_cardinality_explosion() {
     // Many unique request_id values under same pattern
     let base = |id: i32| format!(r#"{{"level":"info","time":"2024-01-01T00:00:00Z","op":"get","request_id":"req-{:04}"}}"#, id);
-    let mut lines: Vec<String> = (0..20).map(base).collect();
+    let lines: Vec<String> = (0..20).map(base).collect();
     let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
 
     let explosions = logoscope::field_anomaly::analyze_categorical_explosions(&refs, 0.8, 10);

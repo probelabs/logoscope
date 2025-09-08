@@ -1,5 +1,5 @@
 {
-  "name": "logoscope-cli",
+  "name": "@probelabs/logoscope",
   "version": "0.1.0",
   "description": "Node.js wrapper for the Logoscope log analysis CLI",
   "main": "src/index.js",

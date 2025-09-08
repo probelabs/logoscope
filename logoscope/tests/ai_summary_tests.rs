@@ -12,7 +12,11 @@ fn builds_basic_ai_summary() {
     assert!(out.summary.unique_patterns >= 1);
     assert!(out.summary.compression_ratio >= 1.0);
     assert_eq!(
-        out.summary.time_span.as_deref(),
-        Some("2024-01-01T00:00:00Z to 2024-01-01T00:02:00Z")
+        out.summary.start_date.as_deref(),
+        Some("2024-01-01T00:00:00Z")
+    );
+    assert_eq!(
+        out.summary.end_date.as_deref(),
+        Some("2024-01-01T00:02:00Z")
     );
 }

@@ -1,0 +1,20 @@
+{"level":"error","time":"2024-01-01T10:00:00Z","msg":"Database connection failed","service":"api","error":"timeout"}
+{"level":"error","time":"2024-01-01T10:00:01Z","msg":"Database connection failed","service":"api","error":"timeout"}
+{"level":"error","time":"2024-01-01T10:00:02Z","msg":"Database connection failed","service":"api","error":"timeout"}
+{"level":"error","time":"2024-01-01T10:00:03Z","msg":"Database connection failed","service":"api","error":"timeout"}
+{"level":"error","time":"2024-01-01T10:00:04Z","msg":"Database connection failed","service":"api","error":"timeout"}
+{"level":"warn","time":"2024-01-01T10:01:00Z","msg":"Memory usage high","service":"api","memory_mb":500}
+{"level":"warn","time":"2024-01-01T10:02:00Z","msg":"Memory usage high","service":"api","memory_mb":600}
+{"level":"warn","time":"2024-01-01T10:03:00Z","msg":"Memory usage high","service":"api","memory_mb":700}
+{"level":"info","time":"2024-01-01T10:04:00Z","msg":"User login","service":"auth","user":"alice"}
+{"level":"info","time":"2024-01-01T10:05:00Z","msg":"User login","service":"auth","user":"bob"}
+{"level":"info","time":"2024-01-01T10:06:00Z","msg":"User login","service":"auth","user":"charlie"}
+{"level":"debug","time":"2024-01-01T10:07:00Z","msg":"Cache hit","service":"cache","key":"user:123"}
+{"level":"debug","time":"2024-01-01T10:08:00Z","msg":"Cache hit","service":"cache","key":"user:456"}
+{"level":"trace","time":"2024-01-01T10:09:00Z","msg":"Request processed","service":"gateway","duration_ms":15}
+{"level":"error","time":"2024-01-01T10:10:00Z","msg":"Payment failed","service":"payment","reason":"insufficient_funds"}
+{"level":"warn","time":"2024-01-01T10:11:00Z","msg":"Rate limit approaching","service":"api","remaining":100}
+{"level":"info","time":"2024-01-01T10:12:00Z","msg":"Order created","service":"orders","order_id":"ORD-789"}
+{"level":"error","time":"2024-01-01T10:15:00Z","msg":"Service unavailable","service":"external","status_code":503}
+{"level":"error","time":"2024-01-01T10:15:01Z","msg":"Service unavailable","service":"external","status_code":503}
+{"level":"error","time":"2024-01-01T10:15:02Z","msg":"Service unavailable","service":"external","status_code":503}
