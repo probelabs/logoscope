@@ -1,4 +1,4 @@
-use chrono::{TimeZone, Utc};
+use chrono::{Datelike, TimeZone, Timelike, Utc};
 
 #[test]
 fn parse_plaintext_line_detects_plaintext_and_message() {
@@ -65,4 +65,93 @@ fn parse_json_uses_timestamp_hints_prioritized() {
     let rec = logoscope::parser::parse_line_with_hints(line, 1, &["ts"]);
     let expected = chrono::Utc.timestamp_opt(1704067200, 0).unwrap();
     assert_eq!(rec.timestamp.unwrap(), expected);
+}
+
+#[test]
+fn parse_rfc3339_with_nanoseconds_and_timezone() {
+    // Test exact format: 2024-08-02T12:14:28.653404379-04:00
+    let line = "2024-08-02T12:14:28.653404379-04:00 service started";
+    let rec = logoscope::parser::parse_line(line, 1);
+    assert_eq!(rec.format, logoscope::parser::LogFormat::Plaintext);
+    assert!(rec.timestamp.is_some());
+    let ts = rec.timestamp.unwrap();
+    // Should be converted to UTC (16:14:28 UTC from 12:14:28-04:00)
+    assert_eq!(ts.year(), 2024);
+    assert_eq!(ts.month(), 8);
+    assert_eq!(ts.day(), 2);
+    assert_eq!(ts.hour(), 16);
+    assert_eq!(ts.minute(), 14);
+    assert_eq!(ts.second(), 28);
+    assert_eq!(ts.nanosecond(), 653404379);
+}
+
+#[test]
+fn parse_syslog_format_in_plain_text() {
+    use chrono::Datelike;
+    // Test exact format: Aug 02 16:14:29
+    let line = "Aug 02 16:14:29 hostname service: message";
+    let rec = logoscope::parser::parse_line(line, 1);
+    assert_eq!(rec.format, logoscope::parser::LogFormat::Plaintext);
+    assert!(rec.timestamp.is_some());
+    let ts = rec.timestamp.unwrap();
+    // Should use current year
+    assert_eq!(ts.year(), Utc::now().year());
+    assert_eq!(ts.month(), 8);
+    assert_eq!(ts.day(), 2);
+    assert_eq!(ts.hour(), 16);
+    assert_eq!(ts.minute(), 14);
+    assert_eq!(ts.second(), 29);
+}
+
+#[test]
+fn parse_syslog_format_in_json_field() {
+    use chrono::Datelike;
+    // Test syslog format in JSON time field
+    let line = r#"{"time":"Aug 02 16:14:29","level":"debug","msg":"test"}"#;
+    let rec = logoscope::parser::parse_line(line, 1);
+    assert_eq!(rec.format, logoscope::parser::LogFormat::Json);
+    assert!(rec.timestamp.is_some());
+    let ts = rec.timestamp.unwrap();
+    assert_eq!(ts.year(), Utc::now().year());
+    assert_eq!(ts.month(), 8);
+    assert_eq!(ts.day(), 2);
+    assert_eq!(ts.hour(), 16);
+    assert_eq!(ts.minute(), 14);
+    assert_eq!(ts.second(), 29);
+}
+
+#[test]
+fn parse_complex_log_with_both_timestamps() {
+    use chrono::Datelike;
+    // Test the exact example provided by user
+    let line = r#"2024-08-02T12:14:29.284151911-04:00 time="Aug 02 16:14:29" level=debug msg="Couldn't get OAuth client" api_id=cHR4LXBlcmZvcm1hbmNlLWFwaW0vcmVwb3J0cw api_name=reports error="key not found" mw=JWTMiddleware org_id=65d5ca03a582c20007a10d2e origin=10.191.250.217 path=/payments-automation/reports/v1/bacs-report-suns"#;
+    let rec = logoscope::parser::parse_line(line, 1);
+    assert_eq!(rec.format, logoscope::parser::LogFormat::Plaintext);
+    assert!(rec.timestamp.is_some());
+    // Should pick up the first timestamp (RFC3339)
+    let ts = rec.timestamp.unwrap();
+    assert_eq!(ts.year(), 2024);
+    assert_eq!(ts.month(), 8);
+    assert_eq!(ts.day(), 2);
+    assert_eq!(ts.hour(), 16); // Converted to UTC from -04:00
+    assert_eq!(ts.minute(), 14);
+    assert_eq!(ts.second(), 29);
+    assert_eq!(ts.nanosecond(), 284151911);
+}
+
+#[test]
+fn parse_json_with_rfc3339_nanoseconds() {
+    // JSON with RFC3339 timestamp with nanoseconds
+    let line = r#"{"timestamp":"2024-08-02T12:14:29.284151911-04:00","level":"info","message":"test"}"#;
+    let rec = logoscope::parser::parse_line(line, 1);
+    assert_eq!(rec.format, logoscope::parser::LogFormat::Json);
+    assert!(rec.timestamp.is_some());
+    let ts = rec.timestamp.unwrap();
+    assert_eq!(ts.year(), 2024);
+    assert_eq!(ts.month(), 8);
+    assert_eq!(ts.day(), 2);
+    assert_eq!(ts.hour(), 16); // UTC from -04:00
+    assert_eq!(ts.minute(), 14);
+    assert_eq!(ts.second(), 29);
+    assert_eq!(ts.nanosecond(), 284151911);
 }
