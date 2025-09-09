@@ -1,0 +1,1 @@
+# Logoscope Binary Directory
