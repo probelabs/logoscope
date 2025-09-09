@@ -126,6 +126,19 @@ fn parse_ts_string(s: &str) -> Option<DateTime<Utc>> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
         return Some(dt.with_timezone(&Utc));
     }
+    
+    // Try syslog format: "Aug 02 16:14:29"
+    static RE_SYSLOG: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+        regex::Regex::new(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}$").unwrap()
+    });
+    if RE_SYSLOG.is_match(s) {
+        let year = Utc::now().year();
+        let candidate = format!("{} {}", year, s);
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&candidate, "%Y %b %d %H:%M:%S") {
+            return Some(Utc.from_utc_datetime(&naive));
+        }
+    }
+    
     // Try common formats, with/without timezone
     let fmts = [
         "%Y-%m-%d %H:%M:%S%.f%:z",
