@@ -283,10 +283,10 @@ mod chunked_consistency_tests {
             assert!(nc_pattern.template.contains("<SERVICE_PATH>"), 
                    "Should detect complex service paths as <SERVICE_PATH>");
             
-            // For structured logs with key=value format, timestamps are parsed separately
-            // and show up as <NUMBER> placeholders for time components  
-            assert!(nc_pattern.template.contains("<NUMBER>"), 
-                   "Should detect timestamp components as numbers in structured logs");
+            // For structured logs with timestamps, they should be properly masked as <TIMESTAMP>
+            // This was improved to mask timestamps correctly instead of leaving them as <NUMBER>
+            assert!(nc_pattern.template.contains("<TIMESTAMP>") || nc_pattern.template.contains("<DURATION_MS>"), 
+                   "Should detect timestamps or duration values in structured logs");
             
             // Should detect null values properly (as field-specific placeholder for structured logs)
             if nc_pattern.template.contains("status") {

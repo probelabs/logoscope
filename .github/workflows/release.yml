@@ -41,7 +41,11 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+        
       - name: Update Cargo.toml version from tag
+        shell: bash
         run: |
           # Extract version from tag (remove 'v' prefix)
           TAG_NAME="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.ref_name }}"
@@ -49,8 +53,9 @@ jobs:
           echo "Tag: $TAG_NAME"
           echo "Version: $VERSION"
           
-          # Update Cargo.toml with the version from tag
-          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" logoscope/Cargo.toml
+          # Update Cargo.toml with the version from tag using cargo-edit
+          # This works cross-platform on Windows, macOS, and Linux
+          cargo set-version --manifest-path logoscope/Cargo.toml "$VERSION"
           
           # Verify the update
           echo "Updated Cargo.toml version:"
