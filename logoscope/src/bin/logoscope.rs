@@ -276,21 +276,25 @@ fn main() -> anyhow::Result<()> {
     // Auto-select based on file size: use non-chunked for files < 50MB total
     const AUTO_CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
     
-    let use_chunked = if cli.no_chunked { 
-        false 
-    } else if cli.chunked {
-        true
-    } else {
-        // Auto-detect based on total file size
-        let total_size = input_files.iter()
-            .filter(|p| *p != "-")
-            .filter_map(|p| std::fs::metadata(p).ok())
-            .map(|m| m.len())
-            .sum::<u64>();
-        
-        // If stdin or total size > threshold, use chunked mode
-        input_files.contains(&"-".to_string()) || total_size > AUTO_CHUNKED_THRESHOLD
-    };
+    // TEMPORARY OVERRIDE: Always disable chunked processing
+    let use_chunked = false;
+    
+    // Original logic commented out for temporary override:
+    // let use_chunked = if cli.no_chunked { 
+    //     false 
+    // } else if cli.chunked {
+    //     true
+    // } else {
+    //     // Auto-detect based on total file size
+    //     let total_size = input_files.iter()
+    //         .filter(|p| *p != "-")
+    //         .filter_map(|p| std::fs::metadata(p).ok())
+    //         .map(|m| m.len())
+    //         .sum::<u64>();
+    //     
+    //     // If stdin or total size > threshold, use chunked mode
+    //     input_files.contains(&"-".to_string()) || total_size > AUTO_CHUNKED_THRESHOLD
+    // };
     let chunk_size_bytes = cli.chunk_size_mb * 1024 * 1024;
     const MAX_LINES_PER_CHUNK: usize = 50_000;
     

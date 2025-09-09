@@ -26,7 +26,7 @@ async function main() {
       try { if (fs.existsSync(p)) { const j = JSON.parse(fs.readFileSync(p, 'utf-8')); if (j.version) { pkgVersion = j.version; break; } } } catch {}
     }
 
-    // Download
+    // Download binary matching package version
     const dest = await downloadBinary(pkgVersion);
     const isWindows = process.platform === 'win32';
     const target = path.join(binDir, isWindows ? 'logoscope.exe' : 'logoscope');

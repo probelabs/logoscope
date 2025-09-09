@@ -8,7 +8,15 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import fs from 'fs-extra';
 
-import { getBinaryPath } from './index.js';
+// import { getBinaryPath } from './index.js';
+
+// Use the same binary path logic as the main wrapper for consistency
+function getBinaryPath() {
+  const isWindows = process.platform === 'win32';
+  const binaryName = isWindows ? 'logoscope.exe' : 'logoscope';
+  // Look in the bin directory relative to the package root
+  return resolve(__dirname, '..', 'bin', binaryName);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

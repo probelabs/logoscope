@@ -12,6 +12,11 @@ static RE_TIMESTAMP: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:\d{2}(?::?\d{2})?|\d{4}))\b").unwrap()
 });
 
+static RE_SYSLOG_TIMESTAMP: Lazy<Regex> = Lazy::new(|| {
+    // Syslog format: "Aug 02 16:06:51" or variations
+    Regex::new(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b").unwrap()
+});
+
 static RE_NUM_UNIT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)\b-?\d+(?:\.\d+)?(?:\s*)(ms|us|µs|ns|s|m|h|kb|mb|gb|kib|mib|gib|b|%)\b").unwrap()
 });
@@ -89,7 +94,9 @@ static RE_KV_PAIR: Lazy<Regex> = Lazy::new(|| {
 // Regex for extracting key-value pairs with capturing groups
 // Captures: (key) = (value)
 static RE_KV_EXTRACT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(\w+)\s*=\s*([^\s,]+)").unwrap()
+    // Match key=value pairs, handling quoted values properly
+    // Captures: key="quoted value with spaces" or key=unquoted_value
+    Regex::new(r#"\b(\w+)\s*=\s*(?:"([^"]*)"|([^\s,]+))"#).unwrap()
 });
 
 #[derive(Debug, Clone)]
@@ -537,20 +544,64 @@ fn canonicalize_json_structure(fields: &BTreeMap<String, String>) -> MaskingResu
 
 /// Canonicalizes key-value pairs found in text into consistent format
 /// Handles mixed content - replaces KV pairs with placeholders, keeps other text as-is
+/// Also masks timestamps and other structured data in the non-KV portions
 fn canonicalize_kv_structure(input: &str) -> MaskingResult {
     let mut extracted_params = HashMap::new();
     let mut result = String::new();
     let mut last_end = 0;
     
+    // Helper function to mask timestamps and other structured data in text segments
+    fn mask_text_segment(text: &str, extracted_params: &mut HashMap<String, Vec<String>>) -> String {
+        let mut masked = text.to_string();
+        
+        // Mask timestamps first (highest priority)
+        for cap in RE_TIMESTAMP.find_iter(text) {
+            let timestamp_val = cap.as_str();
+            masked = masked.replace(timestamp_val, "<TIMESTAMP>");
+            extracted_params.entry("TIMESTAMP".to_string()).or_default().push(timestamp_val.to_string());
+        }
+        
+        // Mask syslog timestamps
+        for cap in RE_SYSLOG_TIMESTAMP.find_iter(text) {
+            let timestamp_val = cap.as_str();
+            masked = masked.replace(timestamp_val, "<TIMESTAMP>");
+            extracted_params.entry("TIMESTAMP".to_string()).or_default().push(timestamp_val.to_string());
+        }
+        
+        // Mask IPs
+        for cap in RE_IPV4.find_iter(text) {
+            let ip_val = cap.as_str();
+            masked = masked.replace(ip_val, "<IP>");
+            extracted_params.entry("IP".to_string()).or_default().push(ip_val.to_string());
+        }
+        for cap in RE_IPV6.find_iter(text) {
+            let ip_val = cap.as_str();
+            masked = masked.replace(ip_val, "<IP>");
+            extracted_params.entry("IP".to_string()).or_default().push(ip_val.to_string());
+        }
+        
+        // Mask UUIDs
+        for cap in RE_UUID.find_iter(text) {
+            let uuid_val = cap.as_str();
+            masked = masked.replace(uuid_val, "<UUID>");
+            extracted_params.entry("UUID".to_string()).or_default().push(uuid_val.to_string());
+        }
+        
+        masked
+    }
+    
     // Use captures_iter for single-pass processing (avoids double regex execution)
     for captures in RE_KV_EXTRACT.captures_iter(input) {
         let mat = captures.get(0).unwrap();
         let key = captures.get(1).unwrap().as_str();
-        let value = captures.get(2).unwrap().as_str();
+        // Handle quoted vs unquoted values (group 2 = quoted, group 3 = unquoted)
+        let value = captures.get(2).map(|m| m.as_str()).unwrap_or_else(|| captures.get(3).unwrap().as_str());
         
-        // Add any text before this match
+        // Add any text before this match (with masking)
         if mat.start() > last_end {
-            result.push_str(&input[last_end..mat.start()]);
+            let text_segment = &input[last_end..mat.start()];
+            let masked_segment = mask_text_segment(text_segment, &mut extracted_params);
+            result.push_str(&masked_segment);
         }
         
         // Skip infrastructure fields
@@ -564,15 +615,27 @@ fn canonicalize_kv_structure(input: &str) -> MaskingResult {
             
             // Track the original value (strip trailing comma if present)
             let clean_value = value.trim_end_matches(',');
-            extracted_params.entry(key_upper).or_insert_with(Vec::new).push(clean_value.to_string());
+            
+            // For time-related fields, try to mask the value before storing it
+            let final_value = if key.to_lowercase().contains("time") {
+                // Apply timestamp masking to the value
+                let mut temp_params = HashMap::new();
+                mask_text_segment(clean_value, &mut temp_params)
+            } else {
+                clean_value.to_string()
+            };
+            
+            extracted_params.entry(key_upper).or_insert_with(Vec::new).push(final_value);
         }
         
         last_end = mat.end();
     }
     
-    // Add any remaining text after the last match
+    // Add any remaining text after the last match (with masking)
     if last_end < input.len() {
-        result.push_str(&input[last_end..]);
+        let text_segment = &input[last_end..];
+        let masked_segment = mask_text_segment(text_segment, &mut extracted_params);
+        result.push_str(&masked_segment);
     }
     
     MaskingResult {
@@ -614,6 +677,7 @@ fn should_skip_field(field_name: &str) -> bool {
 pub fn prewarm_regexes() {
     // Force initialization of all lazy regex patterns
     let _ = &*RE_TIMESTAMP;
+    let _ = &*RE_SYSLOG_TIMESTAMP;
     let _ = &*RE_NUM_UNIT;
     let _ = &*RE_NUM_PERCENT;
     let _ = &*RE_URL;
