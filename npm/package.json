@@ -5,11 +5,12 @@
   "main": "src/index.js",
   "type": "module",
   "bin": {
-    "logoscope": "bin/logoscope"
+    "logoscope": "bin/logoscope-wrapper.js"
   },
   "files": [
     "src/**/*",
     "bin/logoscope",
+    "bin/logoscope-wrapper.js",
     "bin/.gitkeep",
     "scripts/postinstall.js",
     "README.md"
