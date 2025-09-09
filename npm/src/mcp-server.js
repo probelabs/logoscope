@@ -69,7 +69,7 @@ function buildTools() {
     {
       name: 'log_anomalies',
       description:
-        'Quick log analysis focused on anomalies and patterns. Uses triage mode for fast processing. IMPORTANT: This method should ALWAYS be used first when you want to analyze logs - it provides a quick overview before deciding if full analysis is needed. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
+        'Quick log analysis focused on anomalies and patterns. Uses triage mode for fast processing. IMPORTANT: This method should ALWAYS be used first when you want to analyze logs - it provides a quick overview before deciding if full analysis is needed. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method. RECOMMENDED: Set tool timeout to 60 seconds when calling this tool.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -86,7 +86,7 @@ function buildTools() {
     {
       name: 'full_log_analysis',
       description:
-        'Comprehensive log analysis with full patterns, temporal insights, schema changes, anomalies, and AI suggestions. Use this method only after running log_anomalies first to get the initial overview. This provides detailed analysis when you need complete insights. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
+        'Comprehensive log analysis with full patterns, temporal insights, schema changes, anomalies, and AI suggestions. Use this method only after running log_anomalies first to get the initial overview. This provides detailed analysis when you need complete insights. Accepts file paths or glob patterns. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method. RECOMMENDED: Set tool timeout to 60 seconds when calling this tool.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -103,7 +103,7 @@ function buildTools() {
     {
       name: 'patterns_table',
       description:
-        'Return a patterns-only view as a compact table with filtering, grouping, and sorting. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
+        'Return a patterns-only view as a compact table with filtering, grouping, and sorting. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method. RECOMMENDED: Set tool timeout to 60 seconds when calling this tool.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -125,7 +125,7 @@ function buildTools() {
     {
       name: 'logs_slice',
       description:
-        'Return a slice of raw logs filtered by time window and/or pattern with optional context lines. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method.',
+        'Return a slice of raw logs filtered by time window and/or pattern with optional context lines. NOTE: To analyze program output, first save the output to a temporary file, then pass that file path to this method. RECOMMENDED: Set tool timeout to 60 seconds when calling this tool.',
       inputSchema: {
         type: 'object',
         properties: {
